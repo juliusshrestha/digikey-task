@@ -1,6 +1,6 @@
 import { ProductDataItem } from './types';
 
-const productData: ProductDataItem[][] = [
+const baseProductData: ProductDataItem[][] = [
     [
         {
             type: 'compare',
@@ -5636,4 +5636,51 @@ const productData: ProductDataItem[][] = [
     ],
 ];
 
+const makeUniqueSuffix = (idx: number) => String(idx + 1).padStart(4, '0');
+
+const cloneProduct = (productItems: ProductDataItem[], idx: number): ProductDataItem[] => {
+    const suffix = makeUniqueSuffix(idx);
+
+    const compareItem = productItems.find((item) => item.type === 'compare');
+    const baseProductId = compareItem?.type === 'compare' ? compareItem.value.productId : String(idx + 1);
+    const newProductId = `${baseProductId}-${suffix}`;
+
+    return productItems.map((item) => {
+        if (item.type === 'compare') {
+            return {
+                ...item,
+                value: {
+                    ...item.value,
+                    productId: newProductId,
+                    productNumber: `${item.value.productNumber}-${suffix}`,
+                    manufacturerPartNumber: `${item.value.manufacturerPartNumber}-${suffix}`,
+                },
+            };
+        }
+
+        if (item.type === 'productDetail') {
+            const nextDetailUrl = item.value.detailUrl.replace(/\/[^/]+$/, `/${newProductId}`);
+            return {
+                ...item,
+                value: {
+                    ...item.value,
+                    productId: newProductId,
+                    detailUrl: nextDetailUrl,
+                    productNumber: `${item.value.productNumber}-${suffix}`,
+                },
+            };
+        }
+
+        return item;
+    });
+};
+
+// DigiKey-like total count for pagination demos
+const TOTAL_PRODUCTS = 1905;
+
+const productData: ProductDataItem[][] = Array.from({ length: TOTAL_PRODUCTS }, (_, idx) => (
+    cloneProduct(baseProductData[idx % baseProductData.length], idx)
+));
+
 export default productData;
+export { TOTAL_PRODUCTS };

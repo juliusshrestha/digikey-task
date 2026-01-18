@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
     Search,
     X,
@@ -9,44 +9,105 @@ import Table from '#components/Table';
 import manufacturerCompatibility from '#utils/compatibility';
 import batteryData, { type FilterSection } from '#utils/filterData';
 
-function Filters() {
+// Secondary filter sections that appear below main filters
+const secondaryFilters = {
+    stockingOptions: {
+        label: 'Stocking Options',
+        options: [
+            { key: 'inStock', value: 'inStock', text: 'In Stock' },
+            { key: 'normallyStocking', value: 'normallyStocking', text: 'Normally Stocking' },
+            { key: 'newProduct', value: 'newProduct', text: 'New Product' },
+        ],
+    },
+    environmental: {
+        label: 'Environmental Options',
+        options: [
+            { key: 'rohsCompliant', value: 'rohsCompliant', text: 'RoHS Compliant' },
+            { key: 'nonRohsCompliant', value: 'nonRohsCompliant', text: 'Non-RoHS Compliant' },
+        ],
+    },
+    media: {
+        label: 'Media',
+        options: [
+            { key: 'datasheet', value: 'datasheet', text: 'Datasheet' },
+            { key: 'photo', value: 'photo', text: 'Photo' },
+            { key: 'edaCadModels', value: 'edaCadModels', text: 'EDA/CAD Models' },
+        ],
+    },
+    exclude: {
+        label: 'Exclude',
+        options: [
+            { key: 'tariffedProducts', value: 'tariffedProducts', text: 'Tariffed Products' },
+            { key: 'marketplaceProducts', value: 'marketplaceProducts', text: 'Marketplace Products' },
+        ],
+    },
+};
+
+// Simplified mode shows only essential filters
+const SIMPLIFIED_FILTER_KEYS = ['-1', '-4', '412', '2079']; // Manufacturer, Series, Battery Chemistry, Voltage
+
+interface Props {
+    isSimplifiedMode?: boolean;
+    clearFiltersSignal?: number;
+}
+
+function Filters(props: Props) {
+    const { isSimplifiedMode = false, clearFiltersSignal = 0 } = props;
+
     const [selectedFilters, setSelectedFilters] = useState<Set<string>>(new Set());
     const [searchTerms, setSearchTerms] = useState<{ [key: string]: string }>({});
+    const [globalSearch, setGlobalSearch] = useState('');
+    const lastClearSignalRef = useRef<number>(clearFiltersSignal);
+
+    const createSelectedKey = (sectionKey: string, optionValue: string) => `${sectionKey}:${optionValue}`;
+
+    const parseSelectedKey = (selectedKey: string) => {
+        const sepIndex = selectedKey.indexOf(':');
+        if (sepIndex === -1) {
+            return { sectionKey: '', optionValue: selectedKey };
+        }
+        return {
+            sectionKey: selectedKey.slice(0, sepIndex),
+            optionValue: selectedKey.slice(sepIndex + 1),
+        };
+    };
+
+    const createFilterDomId = (sectionKey: string, optionValue: string) => (
+        `filter-${sectionKey}-${optionValue}`.replace(/[^a-zA-Z0-9_-]/g, '_')
+    );
 
     const isOptionDisabled = (sectionKey: string, optionValue: string) => {
-        // NEVER disable manufacturer options - key fix here!
         if (sectionKey === '-1') {
             return false;
         }
 
-        // Get selected manufacturers
-        const selectedManufacturers = Array.from(selectedFilters).filter(
-            (filter) => batteryData[0].options.some((opt) => opt.value === filter),
-        );
+        const selectedManufacturers = Array.from(selectedFilters)
+            .map(parseSelectedKey)
+            .filter((s) => s.sectionKey === '-1')
+            .map((s) => s.optionValue);
 
-        // If no manufacturer is selected, don't disable anything
         if (selectedManufacturers.length === 0) return false;
 
-        // Check if the option is available for ANY selected manufacturer
         const isAvailable = selectedManufacturers.some((manufacturerId) => {
             const compatibility = manufacturerCompatibility[manufacturerId];
-            if (!compatibility) return true; // Changed: If no compatibility data, ALLOW it
+            if (!compatibility) return true;
             const compatibleValues = compatibility[sectionKey];
-            if (!compatibleValues) return true; // Changed: If no rules for this section, ALLOW it
+            if (!compatibleValues) return true;
             return compatibleValues.includes(optionValue);
         });
 
         return !isAvailable;
     };
 
-    const toggleFilter = (value: string) => {
+    const toggleFilter = (sectionKey: string, optionValue: string) => {
         setSelectedFilters((prev) => {
             const newSet = new Set(prev);
+            const selectedKey = createSelectedKey(sectionKey, optionValue);
 
-            if (newSet.has(value)) {
-                newSet.delete(value);
+            if (newSet.has(selectedKey)) {
+                newSet.delete(selectedKey);
             } else {
-                newSet.add(value);
+                newSet.add(selectedKey);
             }
 
             return newSet;
@@ -57,116 +118,237 @@ function Filters() {
         setSelectedFilters(new Set());
     };
 
+    // Allow parent to force-clear filters (used by TaskExperiment)
+    useEffect(() => {
+        if (clearFiltersSignal === lastClearSignalRef.current) return;
+        lastClearSignalRef.current = clearFiltersSignal;
+
+        setSelectedFilters(new Set());
+        setSearchTerms({});
+        setGlobalSearch('');
+    }, [clearFiltersSignal]);
+
     const getFilteredOptions = (section: FilterSection) => {
         const searchTerm = searchTerms[section.key]?.toLowerCase() || '';
         if (!searchTerm) return section.options;
         return section.options.filter((option) => option.text.toLowerCase().includes(searchTerm));
     };
 
+    // Filter sections based on mode
+    const displayedFilterSections = isSimplifiedMode
+        ? batteryData.filter((section) => SIMPLIFIED_FILTER_KEYS.includes(section.key))
+        : batteryData;
+
     return (
-        <div className="w-full bg-white border-b border-gray-200 overflow-x-auto">
-            {/* Header */}
-            <div className="px-6 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                    <h2 className="text-base font-semibold text-gray-900">Filters</h2>
-                    {selectedFilters.size > 0 && (
-                        <div className="text-sm text-gray-600">
-                            {selectedFilters.size}
-                            {' '}
-                            filter
-                            {selectedFilters.size !== 1 ? 's' : ''}
-                            {' '}
-                            applied
-                        </div>
-                    )}
+        <div className="bg-gray-100">
+            {/* Page Title */}
+            <div className="bg-white px-8 py-6 border-b border-gray-200">
+                <h1 className="text-2xl font-bold text-gray-900">Batteries Rechargeable (Secondary)</h1>
+            </div>
+
+            {/* Search and Results Header */}
+            <div className="bg-white px-8 py-5 border-b border-gray-200 flex items-center justify-between">
+                <div className="flex items-center gap-8">
+                    {/* Search Within */}
+                    <div className="relative flex items-center">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                        <input
+                            type="text"
+                            placeholder="Search Within"
+                            value={globalSearch}
+                            onChange={(e) => setGlobalSearch(e.target.value)}
+                            className="pl-9 pr-5 py-2.5 border border-gray-300 rounded-lg text-sm w-56 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                        />
+                    </div>
                 </div>
+
+                {/* Clear filters if any selected */}
                 {selectedFilters.size > 0 && (
                     <button
                         type="button"
                         onClick={clearAllFilters}
-                        className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                        className="text-sm text-orange-600 hover:text-orange-800 font-medium px-4 py-2 rounded-lg hover:bg-orange-50 transition-colors"
                     >
-                        Clear All
+                        Clear All Filters ({selectedFilters.size})
                     </button>
                 )}
             </div>
 
-            {/* Filter Sections */}
-            <div className="flex border-b border-gray-200">
-                {batteryData.map((section) => {
-                    const filteredOptions = getFilteredOptions(section);
+            {/* Main Filter Sections - All filters with horizontal scroll */}
+            <div className="bg-white border-b border-gray-200 overflow-x-auto">
+                <div className="flex min-w-max">
+                    {displayedFilterSections.map((section, index) => {
+                        const filteredOptions = getFilteredOptions(section);
 
-                    return (
-                        <div key={section.key} className="border-r border-gray-200 last:border-r-0 min-w-64">
-                            {/* Section Header */}
+                        return (
                             <div
-                                className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors border-b border-gray-100"
+                                key={section.key}
+                                className={`flex-shrink-0 ${isSimplifiedMode ? 'w-64' : 'w-56'} ${index < displayedFilterSections.length - 1 ? 'border-r border-gray-200' : ''}`}
                             >
-                                <span className="font-medium text-gray-900 text-sm whitespace-nowrap">
-                                    {section.label}
-                                </span>
-                            </div>
+                                {/* Section Header */}
+                                <div className="px-5 py-4 bg-gray-50 border-b border-gray-200">
+                                    <span className="font-semibold text-sm text-gray-900">
+                                        {section.label}
+                                    </span>
+                                </div>
 
-                            {/* Section Content */}
-                            <div className="px-4 py-3">
                                 {/* Search Box */}
                                 {section.parametricSearchEnabled && (
-                                    <div className="mb-2 relative">
-                                        <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                                        <input
-                                            type="text"
-                                            placeholder="Search..."
-                                            value={searchTerms[section.key] || ''}
-                                            onChange={(e) => setSearchTerms((prev) => ({
-                                                ...prev,
-                                                [section.key]: e.target.value,
-                                            }))}
-                                            className="w-full pl-8 pr-8 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                        />
-                                        {searchTerms[section.key] && (
-                                            <button
-                                                type="button"
-                                                onClick={() => setSearchTerms((prev) => ({
+                                    <div className="px-5 py-4 border-b border-gray-100">
+                                        <div className="relative flex items-center">
+                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                                            <input
+                                                type="text"
+                                                placeholder="Search Filter"
+                                                value={searchTerms[section.key] || ''}
+                                                onChange={(e) => setSearchTerms((prev) => ({
                                                     ...prev,
-                                                    [section.key]: '',
+                                                    [section.key]: e.target.value,
                                                 }))}
-                                                className="absolute right-2 top-1/2 transform -translate-y-1/2"
-                                            >
-                                                <X className="w-4 h-4 text-gray-400 hover:text-gray-600" />
-                                            </button>
-                                        )}
+                                                className="w-full pl-9 pr-8 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500"
+                                            />
+                                            {searchTerms[section.key] && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSearchTerms((prev) => ({
+                                                        ...prev,
+                                                        [section.key]: '',
+                                                    }))}
+                                                    className="absolute right-3 top-1/2 -translate-y-1/2"
+                                                >
+                                                    <X className="w-4 h-4 text-gray-400 hover:text-gray-600" />
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
                                 )}
 
                                 {/* Options */}
-                                <div className="space-y-1.5 max-h-80 overflow-y-auto">
-                                    {filteredOptions.length > 0 ? (
-                                        filteredOptions.map((option) => (
-                                            <Filter
-                                                key={option.key}
-                                                option={option}
-                                                checked={selectedFilters.has(option.value)}
-                                                onChange={() => toggleFilter(option.value)}
-                                                disabled={isOptionDisabled(
-                                                    section.key,
-                                                    option.value,
-                                                )}
-                                            />
-                                        ))
-                                    ) : (
-                                        <div className="text-sm text-gray-500 py-2">
-                                            No results found
-                                        </div>
-                                    )}
+                                <div className={`px-5 py-4 ${isSimplifiedMode ? 'max-h-80' : 'max-h-64'} overflow-y-auto`}>
+                                    <div className="space-y-2">
+                                        {filteredOptions.length > 0 ? (
+                                            filteredOptions.map((option) => (
+                                                <Filter
+                                                    key={option.key}
+                                                    option={option}
+                                                    inputId={createFilterDomId(
+                                                        section.key, option.value)}
+                                                    checked={selectedFilters.has(
+                                                        createSelectedKey(
+                                                            section.key, option.value))}
+                                                    onChange={() => toggleFilter(
+                                                        section.key, option.value)}
+                                                    disabled={isOptionDisabled(
+                                                        section.key,
+                                                        option.value,
+                                                    )}
+                                                />
+                                            ))
+                                        ) : (
+                                            <div className="text-sm text-gray-500 py-3">
+                                                No results found
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    );
-                })}
+                        );
+                    })}
+                </div>
             </div>
-            <Table
-                selectedFilters={selectedFilters}
-            />
+
+            {/* Secondary Filters Row - Hidden in simplified mode */}
+            {!isSimplifiedMode && (
+                <div className="bg-white border-b border-gray-200 px-8 py-6">
+                    <div className="flex items-start gap-16 flex-wrap">
+                        {/* Stocking Options */}
+                        <div>
+                            <h3 className="text-sm font-semibold text-gray-900 mb-4">
+                                {secondaryFilters.stockingOptions.label}
+                            </h3>
+                            <div className="space-y-3">
+                                {secondaryFilters.stockingOptions.options.map((opt) => (
+                                    <label key={opt.key} className="flex items-center gap-3 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedFilters.has(createSelectedKey('stocking', opt.value))}
+                                            onChange={() => toggleFilter('stocking', opt.value)}
+                                            className="w-4 h-4 text-orange-600 border-gray-300 rounded focus:ring-orange-500"
+                                        />
+                                        <span className="text-sm text-gray-700">{opt.text}</span>
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Environmental Options */}
+                        <div>
+                            <h3 className="text-sm font-semibold text-gray-900 mb-4">
+                                {secondaryFilters.environmental.label}
+                            </h3>
+                            <div className="space-y-3">
+                                {secondaryFilters.environmental.options.map((opt) => (
+                                    <label key={opt.key} className="flex items-center gap-3 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedFilters.has(createSelectedKey('environmental', opt.value))}
+                                            onChange={() => toggleFilter('environmental', opt.value)}
+                                            className="w-4 h-4 text-orange-600 border-gray-300 rounded focus:ring-orange-500"
+                                        />
+                                        <span className="text-sm text-gray-700">{opt.text}</span>
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Media */}
+                        <div>
+                            <h3 className="text-sm font-semibold text-gray-900 mb-4">
+                                {secondaryFilters.media.label}
+                            </h3>
+                            <div className="space-y-3">
+                                {secondaryFilters.media.options.map((opt) => (
+                                    <label key={opt.key} className="flex items-center gap-3 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedFilters.has(createSelectedKey('media', opt.value))}
+                                            onChange={() => toggleFilter('media', opt.value)}
+                                            className="w-4 h-4 text-orange-600 border-gray-300 rounded focus:ring-orange-500"
+                                        />
+                                        <span className="text-sm text-gray-700">{opt.text}</span>
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Exclude */}
+                        <div>
+                            <h3 className="text-sm font-semibold text-gray-900 mb-4">
+                                {secondaryFilters.exclude.label}
+                            </h3>
+                            <div className="space-y-3">
+                                {secondaryFilters.exclude.options.map((opt) => (
+                                    <label key={opt.key} className="flex items-center gap-3 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedFilters.has(createSelectedKey('exclude', opt.value))}
+                                            onChange={() => toggleFilter('exclude', opt.value)}
+                                            className="w-4 h-4 text-orange-600 border-gray-300 rounded focus:ring-orange-500"
+                                        />
+                                        <span className="text-sm text-gray-700">{opt.text}</span>
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Spacer between filters and table */}
+            <div className="h-8 bg-gray-100" />
+
+            {/* Table */}
+            <Table selectedFilters={selectedFilters} isSimplifiedMode={isSimplifiedMode} />
         </div>
     );
 }

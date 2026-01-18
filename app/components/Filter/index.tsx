@@ -2,6 +2,7 @@ import { FilterOption } from '#utils/filterData';
 
 interface Props {
     option: FilterOption;
+    inputId: string;
     checked: boolean;
     onChange: () => void;
     disabled?: boolean;
@@ -10,6 +11,7 @@ interface Props {
 function Filter(props: Props) {
     const {
         option,
+        inputId,
         checked,
         onChange,
         disabled = false,
@@ -17,23 +19,23 @@ function Filter(props: Props) {
 
     return (
         <label
-            htmlFor={`filter-${option.value}`}
-            className={`flex items-center py-1 px-1 rounded group ${disabled
+            htmlFor={inputId}
+            className={`flex items-center py-1.5 group ${disabled
                 ? 'opacity-50 cursor-not-allowed'
-                : 'cursor-pointer hover:bg-gray-50'
+                : 'cursor-pointer'
             }`}
         >
             <input
-                id={`filter-${option.value}`}
+                id={inputId}
                 type="checkbox"
                 checked={checked}
                 onChange={onChange}
                 disabled={disabled}
-                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                className="w-4 h-4 text-orange-600 border-gray-300 rounded focus:ring-orange-500 disabled:cursor-not-allowed disabled:opacity-50 flex-shrink-0"
             />
-            <span className={`ml-2 text-sm flex-1 ${disabled
+            <span className={`ml-3 text-sm leading-relaxed ${disabled
                 ? 'text-gray-400'
-                : 'text-gray-700 group-hover:text-gray-900'
+                : 'text-gray-700 hover:text-gray-900'
             }`}
             >
                 {option.text}
