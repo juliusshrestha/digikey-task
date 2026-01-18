@@ -1,3 +1,4 @@
+@import "tailwindcss";
 :root {
     --multiplier: 1.2599; /* Major third scale */
 
@@ -23,6 +24,7 @@
 
     --color-background-blue: #c4dff6;
     --color-background-yellow: #ecb731;
+    --color-background-orange: #ff2100;
 
     --color-background-gradient-secondary: #fafde9;
     --color-background-gradient-primary: #f3f5e9;

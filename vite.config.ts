@@ -2,6 +2,7 @@ import { ValidateEnv as validateEnv } from '@julr/vite-plugin-validate-env';
 import reactSwc from '@vitejs/plugin-react-swc';
 // import { execSync } from 'child_process';
 import { defineConfig } from 'vite';
+import tailwindcss from '@tailwindcss/vite'
 import checker from 'vite-plugin-checker';
 import { compression } from 'vite-plugin-compression2';
 import svgr from 'vite-plugin-svgr';
@@ -52,6 +53,7 @@ export default defineConfig(({ mode }) => {
             tsconfigPaths(),
             webfontDownload(),
             validateEnv(envConfig),
+            tailwindcss(),
             isProd ? compression() : undefined,
         ],
         css: {

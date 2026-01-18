@@ -8,19 +8,12 @@ export interface RouteConfig {
 }
 const home: RouteConfig = {
     index: true,
-    // path: '/',
+    path: '/',
     load: () => import('#views/Home'),
-    visibility: 'is-authenticated',
-};
-
-const login: RouteConfig = {
-    path: '/login/',
-    load: () => import('#views/Login'),
     visibility: 'is-not-authenticated',
 };
 
 const routes = {
-    login,
     home,
 };
 

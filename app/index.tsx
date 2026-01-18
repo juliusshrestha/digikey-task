@@ -10,14 +10,6 @@ import {
 import routes, { type RouteConfig } from './root/config/routes.tsx';
 import PageError from './views/PageError/index.tsx';
 
-const privateRoutes = Object.values(routes).filter(
-    ({ visibility }) => visibility === 'is-authenticated',
-);
-
-const publicRoutes = Object.values(routes).filter(
-    ({ visibility }) => visibility === 'is-anything',
-);
-
 const guestRoutes = Object.values(routes).filter(
     ({ visibility }) => visibility === 'is-not-authenticated',
 );
@@ -51,20 +43,6 @@ const router = createBrowserRouter([{
                     return { Component };
                 },
                 children: guestRoutes.map(mapRoute),
-            },
-            {
-                lazy: async () => {
-                    const { default: Component } = await import('./views/PrivateLayout/index.tsx');
-                    return { Component };
-                },
-                children: privateRoutes.map(mapRoute),
-            },
-            {
-                lazy: async () => {
-                    const { default: Component } = await import('./views/PublicLayout/index.tsx');
-                    return { Component };
-                },
-                children: publicRoutes.map(mapRoute),
             }],
         },
     ],

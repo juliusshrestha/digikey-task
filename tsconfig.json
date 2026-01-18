@@ -2,7 +2,6 @@
     "compilerOptions": {
         "baseUrl": ".",
         "paths": {
-            "#generated/*": ["./generated/*"],
             "#views/*": ["app/views/*"],
             "#utils/*": ["app/utils/*"],
             "#configs/*": ["app/configs/*"],
@@ -24,7 +23,7 @@
         "jsx": "react-jsx",
 
         "strict": true,
-        "noUnusedLocals": true,
+        "noUnusedLocals": false,
         "noUnusedParameters": true,
         "noFallthroughCasesInSwitch": true
     },
