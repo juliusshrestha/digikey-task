@@ -44,17 +44,57 @@ interface Props {
     isSimplifiedMode: boolean;
     setIsSimplifiedMode: (value: boolean) => void;
     onClearAllFilters: () => void;
+    onTaskChange?: (taskId: string) => void;
 }
 
 const DEFAULT_TASKS: TaskDefinition[] = [
+    
     {
         id: 'battery-task-1',
+        title: 'Task: Find a battery with specific size and dimensions',
+        instructions: [
+            'Use filters to find a battery with specific size.',
+            'Select Size / Dimension filter and choose any size option.',
+            'Also select Battery Cell Size and Voltage - Rated filters.',
+            'Pick any product from the filtered results and note the Mfr Part #.',
+            'Click "Complete task" when you are done.',
+        ],
+        timeLimitSeconds: 60,
+    },
+    {
+        id: 'battery-task-2',
         title: 'Task: Find a matching battery part',
         instructions: [
             'Use filters to narrow down the list.',
             'Try selecting Battery Chemistry and Voltage - Rated.',
             'Pick any product from the table and note the Mfr Part #.',
-            'Click “Complete task” when you are done.',
+            'Click "Complete task" when you are done.',
+        ],
+        timeLimitSeconds: 60,
+    },
+    {
+        id: 'battery-task-3',
+        title: 'Task: Find a battery by dimensions and capacity',
+        instructions: [
+            'Use filters to narrow down by size and capacity.',
+            'Select Size / Dimension filter and choose a dimension option.',
+            'Select Capacity filter and choose a capacity value.',
+            'Optionally select Manufacturer filter for further narrowing.',
+            'Pick any product from the table and note the Mfr Part #.',
+            'Click "Complete task" when you are done.',
+        ],
+        timeLimitSeconds: 60,
+    },
+    {
+        id: 'battery-task-4',
+        title: 'Task: Find a battery with specific cell size and voltage',
+        instructions: [
+            'Use filters to find a battery with specific characteristics.',
+            'Select Battery Cell Size filter and choose a cell size.',
+            'Select Voltage - Rated filter and choose a voltage value.',
+            'Select Size / Dimension filter to further narrow the results.',
+            'Pick any product from the filtered table and note the Mfr Part #.',
+            'Click "Complete task" when you are done.',
         ],
         timeLimitSeconds: 60,
     },
@@ -69,6 +109,7 @@ function TaskExperiment(props: Props) {
         isSimplifiedMode,
         setIsSimplifiedMode,
         onClearAllFilters,
+        onTaskChange,
     } = props;
 
     const [selectedTaskId, setSelectedTaskId] = useState(DEFAULT_TASKS[0]?.id ?? '');
@@ -76,6 +117,13 @@ function TaskExperiment(props: Props) {
         () => DEFAULT_TASKS.find((t) => t.id === selectedTaskId) ?? DEFAULT_TASKS[0],
         [selectedTaskId],
     );
+
+    // Notify parent of task change
+    useEffect(() => {
+        if (onTaskChange) {
+            onTaskChange(selectedTaskId);
+        }
+    }, [selectedTaskId, onTaskChange]);
 
     const [currentRound, setCurrentRound] = useState<RoundId>(1);
     const [isRunning, setIsRunning] = useState(false);
@@ -99,6 +147,13 @@ function TaskExperiment(props: Props) {
     const sumGazeRef = useRef(0);
     const sumEmotionRef = useRef(0);
     const sumMouseRef = useRef(0);
+    
+    // Grace period tracking (30 seconds)
+    const GRACE_PERIOD_SECONDS = 30;
+    const thresholdReachedDuringGracePeriodRef = useRef(false);
+    const thresholdReachedAfterGracePeriodRef = useRef(false);
+    const gracePeriodEndedRef = useRef(false);
+    const taskContinuedInSimplifiedModeRef = useRef(false);
 
     const resetAccumulators = useCallback(() => {
         startedAtMsRef.current = null;
@@ -112,6 +167,10 @@ function TaskExperiment(props: Props) {
         sumGazeRef.current = 0;
         sumEmotionRef.current = 0;
         sumMouseRef.current = 0;
+        thresholdReachedDuringGracePeriodRef.current = false;
+        thresholdReachedAfterGracePeriodRef.current = false;
+        gracePeriodEndedRef.current = false;
+        taskContinuedInSimplifiedModeRef.current = false;
     }, []);
 
     const validMfrPartNumbers = useMemo(() => {
@@ -227,15 +286,40 @@ function TaskExperiment(props: Props) {
             setAnswerTouched(true);
             return;
         }
-        const didReachThresholdThisRound = thresholdReachedRef.current;
         finalizeRound('completed');
 
         if (currentRound === 1) {
-            // Do NOT show warning immediately when threshold is reached.
-            // Show it after task completion (end of round 1), then switch UI and move to round 2.
-            if (didReachThresholdThisRound) {
-                setShowWarning(true);
-            } else {
+            // If task was continued in simplified mode, Round 2 starts after completion
+            if (taskContinuedInSimplifiedModeRef.current) {
+                // Task was completed after switching to simplified mode
+                // Now start Round 2 (fresh start of same task in simplified mode)
+                setIsSimplifiedMode(true);
+                setCurrentRound(2);
+                onClearAllFilters();
+            }
+            // SCENARIO A: Early threshold but successful completion (No Warning)
+            // If threshold was reached ONLY during grace period and NOT after, skip warning
+            else if (
+                thresholdReachedDuringGracePeriodRef.current
+                && !thresholdReachedAfterGracePeriodRef.current
+            ) {
+                // User successfully managed the load without intervention
+                setIsSimplifiedMode(true);
+                setCurrentRound(2);
+                onClearAllFilters();
+            }
+            // SCENARIO C: Threshold reached after grace period - warning already shown
+            // If threshold was reached after grace period, warning was shown immediately
+            // Just move to round 2 (warning modal onAcceptChange handles this)
+            else if (thresholdReachedAfterGracePeriodRef.current) {
+                // Warning was already shown, user may have dismissed it
+                // If they completed, move to round 2
+                setIsSimplifiedMode(true);
+                setCurrentRound(2);
+                onClearAllFilters();
+            }
+            // No threshold reached at all - move directly to round 2
+            else {
                 setIsSimplifiedMode(true);
                 setCurrentRound(2);
                 onClearAllFilters();
@@ -271,25 +355,56 @@ function TaskExperiment(props: Props) {
         const timer = setInterval(() => {
             setTimeLeftSeconds((prev) => {
                 if (prev <= 1) {
-                    finalizeRound('time_limit');
-                    if (currentRound === 1) {
-                        setIsSimplifiedMode(true);
-                        setCurrentRound(2);
-                        onClearAllFilters();
+                    // Time limit reached (1 minute)
+                    if (currentRound === 1 && !taskContinuedInSimplifiedModeRef.current) {
+                        // Check if threshold was exceeded after grace period
+                        if (thresholdReachedAfterGracePeriodRef.current) {
+                            // Threshold exceeded: Continue same task in simplified mode
+                            taskContinuedInSimplifiedModeRef.current = true;
+                            setIsSimplifiedMode(true);
+                            // Don't finalize the round, continue the task
+                            // Reset timer to give more time or extend it
+                            return selectedTask.timeLimitSeconds; // Give another full minute
+                        } else {
+                            // No threshold exceeded: Finalize round and show warning
+                            finalizeRound('time_limit');
+                            // SCENARIO B: Failure to complete without threshold after grace period
+                            // Show warning if threshold was NOT reached after grace period
+                            setShowWarning(true);
+                            return 0;
+                        }
+                    } else {
+                        // Time limit reached in other scenarios, finalize the round
+                        finalizeRound('time_limit');
+                        if (currentRound === 1) {
+                            setIsSimplifiedMode(true);
+                            setCurrentRound(2);
+                            onClearAllFilters();
+                        }
+                        return 0;
                     }
-                    return 0;
                 }
                 return prev - 1;
             });
         }, 1000);
 
         return () => clearInterval(timer);
-    }, [currentRound, finalizeRound, isRunning, onClearAllFilters, setIsSimplifiedMode]);
+    }, [currentRound, finalizeRound, isRunning, onClearAllFilters, setIsSimplifiedMode, selectedTask.timeLimitSeconds]);
 
     // Sample cognitive load while running
     useEffect(() => {
         if (!isRunning) return;
         if (!cognitiveLoad) return;
+        if (!startedAtMsRef.current) return;
+
+        // Calculate elapsed time since round started
+        const elapsedSeconds = Math.floor((Date.now() - startedAtMsRef.current) / 1000);
+        const isInGracePeriod = elapsedSeconds < GRACE_PERIOD_SECONDS;
+
+        // Mark grace period as ended
+        if (!isInGracePeriod && !gracePeriodEndedRef.current) {
+            gracePeriodEndedRef.current = true;
+        }
 
         // Some backends send score as 0..1, others as 0..100.
         const rawScore = cognitiveLoad.score ?? 0;
@@ -314,11 +429,24 @@ function TaskExperiment(props: Props) {
             consecutiveHighRef.current = 0;
         }
 
-        // Mark threshold reached during round 1, but DO NOT open warning modal here.
+        // Track threshold detection based on grace period
         if (currentRound === 1 && isHigh) {
             thresholdReachedRef.current = true;
+
+            if (isInGracePeriod) {
+                // Threshold reached during grace period (first 30 seconds)
+                thresholdReachedDuringGracePeriodRef.current = true;
+                // DO NOT show warning modal during grace period
+            } else {
+                // SCENARIO C: Threshold reached AFTER grace period
+                thresholdReachedAfterGracePeriodRef.current = true;
+                // Show warning modal IMMEDIATELY
+                if (!showWarning) {
+                    setShowWarning(true);
+                }
+            }
         }
-    }, [cognitiveLoad, currentRound, isRunning]);
+    }, [cognitiveLoad, currentRound, isRunning, showWarning]);
 
     const canStart = isConnected && !isRunning;
 
@@ -338,18 +466,32 @@ function TaskExperiment(props: Props) {
         <div className="mx-4 mt-6 mb-6">
             <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
                 <div className="px-8 py-6">
-                    {!isConnected && (
-                        <div className="mb-4 text-sm text-red-600">
-                            WebSocket is not connected.
-                            {' '}
-                            Start the cognitive load server to run the task.
-                        </div>
-                    )}
-
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-                        {/* Left: round + timer + controls (compact) */}
-                        <div className="lg:col-span-1">
-                            <div className="bg-white border border-gray-200 rounded-lg p-5">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
+                        {/* Left: round + timer + controls */}
+                        <div className="flex flex-col">
+                            <div className="bg-white border border-gray-200 rounded-lg p-5 h-full flex flex-col">
+                                {!hasStartedExperiment && (
+                                    <div className="mb-4">
+                                        <label htmlFor="task-selector" className="block text-sm font-semibold text-gray-900 mb-2">
+                                            Select Task
+                                        </label>
+                                        <select
+                                            id="task-selector"
+                                            value={selectedTaskId}
+                                            onChange={(e) => {
+                                                setSelectedTaskId(e.target.value);
+                                            }}
+                                            disabled={isRunning}
+                                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 disabled:bg-gray-50 disabled:cursor-not-allowed"
+                                        >
+                                            {DEFAULT_TASKS.map((task) => (
+                                                <option key={task.id} value={task.id}>
+                                                    {task.title}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
                                 <div className="text-sm font-semibold text-gray-900">
                                     Current round:
                                     {' '}
@@ -411,9 +553,9 @@ function TaskExperiment(props: Props) {
                             </div>
                         </div>
 
-                        {/* Middle: task + answer (red-box area) */}
-                        <div className="lg:col-span-1">
-                            <div className="bg-white border border-gray-200 rounded-lg p-5 min-h-[168px]">
+                        {/* Middle: task + answer */}
+                        <div className="flex flex-col">
+                            <div className="bg-white border border-gray-200 rounded-lg p-5 h-full flex flex-col">
                                 {!hasStartedExperiment ? (
                                     <div className="border border-dashed border-gray-300 rounded-lg p-4 bg-white">
                                         <div className="text-sm font-semibold text-gray-900 mb-1">
@@ -500,129 +642,132 @@ function TaskExperiment(props: Props) {
                             </div>
                         </div>
 
-                        <div className="bg-gray-50 border border-gray-200 rounded-lg p-5">
-                            <div className="text-sm font-semibold text-gray-900 mb-3">Results</div>
+                        {/* Right: results */}
+                        <div className="flex flex-col">
+                            <div className="bg-gray-50 border border-gray-200 rounded-lg p-5 h-full flex flex-col">
+                                <div className="text-sm font-semibold text-gray-900 mb-3">Results</div>
 
-                            <div className="space-y-3 text-sm">
-                                <div className="flex justify-between">
-                                    <span className="text-gray-600">UI mode</span>
-                                    <span className="font-medium text-gray-900">
-                                        {isSimplifiedMode ? 'Simplified' : 'Normal'}
-                                    </span>
+                                <div className="space-y-3 text-sm">
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-600">UI mode</span>
+                                        <span className="font-medium text-gray-900">
+                                            {isSimplifiedMode ? 'Simplified' : 'Normal'}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-600">Threshold</span>
+                                        <span className="font-medium text-gray-900">70%</span>
+                                    </div>
                                 </div>
-                                <div className="flex justify-between">
-                                    <span className="text-gray-600">Threshold</span>
-                                    <span className="font-medium text-gray-900">70%</span>
-                                </div>
+
+                                {(round1 || round2) && (
+                                    <div className="mt-4 space-y-4">
+                                        {round1 && (
+                                            <div className="border-t border-gray-200 pt-4">
+                                                <div className="text-xs font-semibold text-gray-700 mb-2">Round 1</div>
+                                                <div className="text-xs text-gray-600 space-y-1">
+                                                    <div>
+                                                        Ended:
+                                                        {' '}
+                                                        <span className="text-gray-900">{round1.endedReason}</span>
+                                                    </div>
+                                                    <div>
+                                                        Duration:
+                                                        {' '}
+                                                        <span className="text-gray-900">
+                                                            {round1.durationSeconds}
+                                                            s
+                                                        </span>
+                                                    </div>
+                                                    <div>
+                                                        Avg score:
+                                                        {' '}
+                                                        <span className="text-gray-900">
+                                                            {Math.round(round1.avgScore * 100)}
+                                                            %
+                                                        </span>
+                                                    </div>
+                                                    <div>
+                                                        Max score:
+                                                        {' '}
+                                                        <span className="text-gray-900">
+                                                            {Math.round(round1.maxScore * 100)}
+                                                            %
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+                                        {round2 && (
+                                            <div className="border-t border-gray-200 pt-4">
+                                                <div className="text-xs font-semibold text-gray-700 mb-2">Round 2</div>
+                                                <div className="text-xs text-gray-600 space-y-1">
+                                                    <div>
+                                                        Ended:
+                                                        {' '}
+                                                        <span className="text-gray-900">{round2.endedReason}</span>
+                                                    </div>
+                                                    <div>
+                                                        Duration:
+                                                        {' '}
+                                                        <span className="text-gray-900">
+                                                            {round2.durationSeconds}
+                                                            s
+                                                        </span>
+                                                    </div>
+                                                    <div>
+                                                        Avg score:
+                                                        {' '}
+                                                        <span className="text-gray-900">
+                                                            {Math.round(round2.avgScore * 100)}
+                                                            %
+                                                        </span>
+                                                    </div>
+                                                    <div>
+                                                        Max score:
+                                                        {' '}
+                                                        <span className="text-gray-900">
+                                                            {Math.round(round2.maxScore * 100)}
+                                                            %
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+                                        {comparison && (
+                                            <div className="border-t border-gray-200 pt-4">
+                                                <div className="text-xs font-semibold text-gray-700 mb-2">Comparison (Round 2 - Round 1)</div>
+                                                <div className="text-xs text-gray-600 space-y-1">
+                                                    <div>
+                                                        Avg score Δ:
+                                                        {' '}
+                                                        <span className="text-gray-900">
+                                                            {Math.round(comparison.avgScoreDelta * 100)}
+                                                            %
+                                                        </span>
+                                                    </div>
+                                                    <div>
+                                                        Max score Δ:
+                                                        {' '}
+                                                        <span className="text-gray-900">
+                                                            {Math.round(comparison.maxScoreDelta * 100)}
+                                                            %
+                                                        </span>
+                                                    </div>
+                                                    <div>
+                                                        Time Δ:
+                                                        {' '}
+                                                        <span className="text-gray-900">
+                                                            {comparison.timeDelta}
+                                                            s
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
-
-                            {(round1 || round2) && (
-                                <div className="mt-4 space-y-4">
-                                    {round1 && (
-                                        <div className="border-t border-gray-200 pt-4">
-                                            <div className="text-xs font-semibold text-gray-700 mb-2">Round 1</div>
-                                            <div className="text-xs text-gray-600 space-y-1">
-                                                <div>
-                                                    Ended:
-                                                    {' '}
-                                                    <span className="text-gray-900">{round1.endedReason}</span>
-                                                </div>
-                                                <div>
-                                                    Duration:
-                                                    {' '}
-                                                    <span className="text-gray-900">
-                                                        {round1.durationSeconds}
-                                                        s
-                                                    </span>
-                                                </div>
-                                                <div>
-                                                    Avg score:
-                                                    {' '}
-                                                    <span className="text-gray-900">
-                                                        {Math.round(round1.avgScore * 100)}
-                                                        %
-                                                    </span>
-                                                </div>
-                                                <div>
-                                                    Max score:
-                                                    {' '}
-                                                    <span className="text-gray-900">
-                                                        {Math.round(round1.maxScore * 100)}
-                                                        %
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-                                    {round2 && (
-                                        <div className="border-t border-gray-200 pt-4">
-                                            <div className="text-xs font-semibold text-gray-700 mb-2">Round 2</div>
-                                            <div className="text-xs text-gray-600 space-y-1">
-                                                <div>
-                                                    Ended:
-                                                    {' '}
-                                                    <span className="text-gray-900">{round2.endedReason}</span>
-                                                </div>
-                                                <div>
-                                                    Duration:
-                                                    {' '}
-                                                    <span className="text-gray-900">
-                                                        {round2.durationSeconds}
-                                                        s
-                                                    </span>
-                                                </div>
-                                                <div>
-                                                    Avg score:
-                                                    {' '}
-                                                    <span className="text-gray-900">
-                                                        {Math.round(round2.avgScore * 100)}
-                                                        %
-                                                    </span>
-                                                </div>
-                                                <div>
-                                                    Max score:
-                                                    {' '}
-                                                    <span className="text-gray-900">
-                                                        {Math.round(round2.maxScore * 100)}
-                                                        %
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-                                    {comparison && (
-                                        <div className="border-t border-gray-200 pt-4">
-                                            <div className="text-xs font-semibold text-gray-700 mb-2">Comparison (Round 2 - Round 1)</div>
-                                            <div className="text-xs text-gray-600 space-y-1">
-                                                <div>
-                                                    Avg score Δ:
-                                                    {' '}
-                                                    <span className="text-gray-900">
-                                                        {Math.round(comparison.avgScoreDelta * 100)}
-                                                        %
-                                                    </span>
-                                                </div>
-                                                <div>
-                                                    Max score Δ:
-                                                    {' '}
-                                                    <span className="text-gray-900">
-                                                        {Math.round(comparison.maxScoreDelta * 100)}
-                                                        %
-                                                    </span>
-                                                </div>
-                                                <div>
-                                                    Time Δ:
-                                                    {' '}
-                                                    <span className="text-gray-900">
-                                                        {comparison.timeDelta}
-                                                        s
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
                         </div>
                     </div>
                 </div>
@@ -635,15 +780,24 @@ function TaskExperiment(props: Props) {
                 }}
                 onAcceptChange={() => {
                     setShowWarning(false);
-                    setIsSimplifiedMode(true);
-                    setCurrentRound(2);
-                    onClearAllFilters();
+                    // If round is still running and task hasn't been continued yet
+                    if (isRunning && currentRound === 1 && !taskContinuedInSimplifiedModeRef.current) {
+                        // Continue the same task in simplified mode
+                        taskContinuedInSimplifiedModeRef.current = true;
+                        setIsSimplifiedMode(true);
+                        // Don't finalize, just switch UI and continue
+                    } else if (!isRunning && currentRound === 1) {
+                        // Task was already finalized (time limit), start Round 2
+                        setIsSimplifiedMode(true);
+                        setCurrentRound(2);
+                        onClearAllFilters();
+                    }
                 }}
                 title="Cognitive load is high"
-                message="Your cognitive load reached 70%. The UI is going to change to a simplified version. Please repeat the task again so we can measure and compare."
+                message="Your cognitive load reached 70%. The UI will change to a simplified version to help you complete the task."
                 showDismiss
                 dismissLabel="Keep current UI"
-                acceptLabel="Change UI & start round 2"
+                acceptLabel="Switch to simplified UI"
                 showCountdown={false}
                 autoAccept={false}
             />

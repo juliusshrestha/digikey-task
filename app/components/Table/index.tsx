@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
     ChevronLeft,
     ChevronRight,
@@ -84,6 +84,7 @@ const SIMPLIFIED_COLUMN_IDS = ['checkbox', '-99', '-100', '-102', '-101', '-4', 
 interface Props {
     selectedFilters: Set<string>;
     isSimplifiedMode?: boolean;
+    globalSearch?: string;
 }
 
 const optionTextBySectionKey: Record<string, Record<string, string>> = batteryData.reduce(
@@ -98,15 +99,13 @@ const optionTextBySectionKey: Record<string, Record<string, string>> = batteryDa
 );
 
 function Table(props: Props) {
-    const { selectedFilters, isSimplifiedMode = false } = props;
+    const { selectedFilters, isSimplifiedMode = false, globalSearch = '' } = props;
 
     const [sortBy, setSortBy] = useState('-100');
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
     const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(25);
-
-    const totalPages = Math.ceil(totalProducts / itemsPerPage);
 
     const handleSort = (columnId: string) => {
         if (sortBy === columnId) {
@@ -177,64 +176,116 @@ function Table(props: Props) {
     };
 
     const getFilteredProducts = () => {
-        if (selectedFilters.size === 0) return productData;
+        let filtered = productData;
 
-        const selectedBySectionKey = Array.from(selectedFilters)
-            .map(parseSelectedKey)
-            .filter((s) => s.sectionKey)
-            .reduce((acc, { sectionKey, optionValue }) => {
-                if (!acc[sectionKey]) acc[sectionKey] = new Set<string>();
-                acc[sectionKey].add(optionValue);
-                return acc;
-            }, {} as Record<string, Set<string>>);
+        // Apply filter selections
+        if (selectedFilters.size > 0) {
+            const selectedBySectionKey = Array.from(selectedFilters)
+                .map(parseSelectedKey)
+                .filter((s) => s.sectionKey)
+                .reduce((acc, { sectionKey, optionValue }) => {
+                    if (!acc[sectionKey]) acc[sectionKey] = new Set<string>();
+                    acc[sectionKey].add(optionValue);
+                    return acc;
+                }, {} as Record<string, Set<string>>);
 
-        return productData.filter((productItems) => (
-            Object.entries(selectedBySectionKey).every(([sectionKey, selectedValues]) => {
-                if (selectedValues.size === 0) return true;
+            filtered = filtered.filter((productItems) => (
+                Object.entries(selectedBySectionKey).every(([sectionKey, selectedValues]) => {
+                    if (selectedValues.size === 0) return true;
 
-                // Skip secondary filter sections (they don't map to product data)
-                if (['stocking', 'environmental', 'media', 'exclude'].includes(sectionKey)) {
-                    return true;
-                }
-
-                if (sectionKey === '-1') {
-                    const compareItem = productItems.find((item) => item.type === 'compare');
-                    if (compareItem?.type !== 'compare') return false;
-                    return selectedValues.has(String(compareItem.value.manufacturer.id));
-                }
-
-                const item = productItems.find((i) => i.id === sectionKey);
-                if (!item) return false;
-
-                if (item.type === 'string' || item.type === 'link') {
-                    if (item.filterOptions) {
-                        return selectedValues.has(item.filterOptions);
+                    // Skip secondary filter sections (they don't map to product data)
+                    if (['stocking', 'environmental', 'media', 'exclude'].includes(sectionKey)) {
+                        return true;
                     }
 
-                    const productText = item.type === 'string' ? item.value.value : item.value.label;
-                    const optionTextLookup = optionTextBySectionKey[sectionKey] || {};
-                    return Array.from(selectedValues).some((v) => optionTextLookup[v] === productText);
-                }
-
-                if (item.type === 'stringList') {
-                    if (Array.isArray(item.filterOptions) && item.filterOptions.length > 0) {
-                        return item.filterOptions.some((v) => selectedValues.has(v));
+                    if (sectionKey === '-1') {
+                        const compareItem = productItems.find((item) => item.type === 'compare');
+                        if (compareItem?.type !== 'compare') return false;
+                        return selectedValues.has(String(compareItem.value.manufacturer.id));
                     }
 
-                    const productTexts = item.value.map((v) => v.value);
-                    const optionTextLookup = optionTextBySectionKey[sectionKey] || {};
-                    return Array.from(selectedValues).some((v) => {
-                        const selectedText = optionTextLookup[v];
-                        return selectedText ? productTexts.includes(selectedText) : false;
-                    });
+                    const item = productItems.find((i) => i.id === sectionKey);
+                    if (!item) return false;
+
+                    if (item.type === 'string' || item.type === 'link') {
+                        if (item.filterOptions) {
+                            return selectedValues.has(item.filterOptions);
+                        }
+
+                        const productText = item.type === 'string' ? item.value.value : item.value.label;
+                        const optionTextLookup = optionTextBySectionKey[sectionKey] || {};
+                        return Array.from(selectedValues).some((v) => optionTextLookup[v] === productText);
+                    }
+
+                    if (item.type === 'stringList') {
+                        if (Array.isArray(item.filterOptions) && item.filterOptions.length > 0) {
+                            return item.filterOptions.some((v) => selectedValues.has(v));
+                        }
+
+                        const productTexts = item.value.map((v) => v.value);
+                        const optionTextLookup = optionTextBySectionKey[sectionKey] || {};
+                        return Array.from(selectedValues).some((v) => {
+                            const selectedText = optionTextLookup[v];
+                            return selectedText ? productTexts.includes(selectedText) : false;
+                        });
+                    }
+
+                    return false;
+                })
+            ));
+        }
+
+        // Apply global search
+        if (globalSearch.trim()) {
+            const searchTerm = globalSearch.trim().toLowerCase();
+            filtered = filtered.filter((productItems) => {
+                // Search in various product fields
+                const searchableTexts: string[] = [];
+
+                // Manufacturer Part Number
+                const compareItem = productItems.find((item) => item.type === 'compare');
+                if (compareItem?.type === 'compare') {
+                    searchableTexts.push(compareItem.value.manufacturerPartNumber.toLowerCase());
+                    searchableTexts.push(compareItem.value.manufacturer.name.toLowerCase());
+                    searchableTexts.push(compareItem.value.shortDescription.toLowerCase());
                 }
 
-                return false;
-            })
-        ));
+                // Product Number and Description
+                const productDetail = productItems.find((item) => item.type === 'productDetail');
+                if (productDetail?.type === 'productDetail') {
+                    searchableTexts.push(productDetail.value.productNumber.toLowerCase());
+                    searchableTexts.push(productDetail.value.description.toLowerCase());
+                }
+
+                // Series
+                const seriesItem = productItems.find((item) => item.id === '-4');
+                if (seriesItem?.type === 'link') {
+                    searchableTexts.push(seriesItem.value.label.toLowerCase());
+                }
+
+                // All string fields
+                productItems.forEach((item) => {
+                    if (item.type === 'string') {
+                        searchableTexts.push(item.value.value.toLowerCase());
+                    } else if (item.type === 'link') {
+                        searchableTexts.push(item.value.label.toLowerCase());
+                    } else if (item.type === 'stringList') {
+                        item.value.forEach((v) => {
+                            searchableTexts.push(v.value.toLowerCase());
+                        });
+                    }
+                });
+
+                // Check if search term matches any of the searchable texts
+                return searchableTexts.some((text) => text.includes(searchTerm));
+            });
+        }
+
+        return filtered;
     };
 
     const filteredProducts = getFilteredProducts();
+    const filteredProductsCount = filteredProducts.length;
 
     const sortedProducts = [...filteredProducts].sort((a, b) => {
         const aVal = getProductValue(a, sortBy);
@@ -247,9 +298,16 @@ function Table(props: Props) {
         return (aVal > bVal ? 1 : -1) * multiplier;
     });
 
+    const totalPages = Math.ceil(filteredProductsCount / itemsPerPage);
     const startIndex = (currentPage - 1) * itemsPerPage;
     const endIndex = startIndex + itemsPerPage;
     const paginatedProducts = sortedProducts.slice(startIndex, endIndex);
+
+    // Reset to page 1 when filters or search change
+    useEffect(() => {
+        setCurrentPage(1);
+        setSelectedRows(new Set());
+    }, [selectedFilters, globalSearch]);
 
     const goToPage = (page: number) => {
         if (page >= 1 && page <= totalPages) {
@@ -316,15 +374,15 @@ function Table(props: Props) {
                         Showing
                         {' '}
                         <span className="font-semibold text-gray-900">
-                            {startIndex + 1}
+                            {filteredProductsCount > 0 ? startIndex + 1 : 0}
                             {' - '}
-                            {Math.min(endIndex, totalProducts)}
+                            {Math.min(endIndex, filteredProductsCount)}
                         </span>
                         {' '}
                         of
                         {' '}
                         <span className="font-semibold text-gray-900">
-                            {totalProducts.toLocaleString()}
+                            {filteredProductsCount.toLocaleString()}
                         </span>
                     </span>
 
@@ -417,21 +475,15 @@ function Table(props: Props) {
                                                 );
                                             }
 
-                                            // Image column with PDF icon
+                                            // Image column
                                             if (col.id === '-99' && compareItem?.type === 'compare') {
                                                 return (
                                                     <td key={col.id} className="px-5 py-5 whitespace-nowrap">
-                                                        <div className="flex items-start gap-3">
-                                                            {/* PDF icon */}
-                                                            <div className="w-7 h-7 bg-red-600 rounded flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                                                                PDF
-                                                            </div>
-                                                            <img
-                                                                src={`https:${compareItem.value.iconImage}`}
-                                                                alt={compareItem.value.manufacturerPartNumber}
-                                                                className="w-16 h-16 object-contain"
-                                                            />
-                                                        </div>
+                                                        <img
+                                                            src={`https:${compareItem.value.iconImage}`}
+                                                            alt={compareItem.value.manufacturerPartNumber}
+                                                            className="w-16 h-16 object-contain"
+                                                        />
                                                     </td>
                                                 );
                                             }
@@ -462,15 +514,24 @@ function Table(props: Props) {
                                             }
 
                                             // Quantity available
-                                            if (col.id === '-102' && item?.type === 'qtyAvailable') {
+                                            if (col.id === '-102') {
+                                                const qtyItem = productItems.find((i) => i.id === '-102' && i.type === 'qtyAvailable');
+                                                if (qtyItem?.type === 'qtyAvailable') {
+                                                    return (
+                                                        <td key={col.id} className="px-5 py-5 whitespace-nowrap">
+                                                            <div className="text-sm font-semibold text-gray-900">
+                                                                {qtyItem.value[0]?.quantity || '-'}
+                                                            </div>
+                                                            <div className="text-xs text-green-600 mt-1">
+                                                                {qtyItem.value[0]?.label || ''}
+                                                            </div>
+                                                        </td>
+                                                    );
+                                                }
+                                                // Fallback if qtyAvailable not found
                                                 return (
                                                     <td key={col.id} className="px-5 py-5 whitespace-nowrap">
-                                                        <div className="text-sm font-semibold text-gray-900">
-                                                            {item.value[0]?.quantity}
-                                                        </div>
-                                                        <div className="text-xs text-green-600 mt-1">
-                                                            {item.value[0]?.label}
-                                                        </div>
+                                                        <div className="text-sm font-semibold text-gray-900">-</div>
                                                     </td>
                                                 );
                                             }

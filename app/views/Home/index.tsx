@@ -20,9 +20,14 @@ function Home() {
 
     const [isSimplifiedMode, setIsSimplifiedMode] = useState(false);
     const [clearFiltersSignal, setClearFiltersSignal] = useState(0);
+    const [currentTaskId, setCurrentTaskId] = useState<string>('');
 
     const clearAllFilters = useCallback(() => {
         setClearFiltersSignal((prev) => prev + 1);
+    }, []);
+
+    const handleTaskChange = useCallback((taskId: string) => {
+        setCurrentTaskId(taskId);
     }, []);
 
     return (
@@ -33,8 +38,9 @@ function Home() {
                 isSimplifiedMode={isSimplifiedMode}
                 setIsSimplifiedMode={setIsSimplifiedMode}
                 onClearAllFilters={clearAllFilters}
+                onTaskChange={handleTaskChange}
             />
-            <Filters isSimplifiedMode={isSimplifiedMode} clearFiltersSignal={clearFiltersSignal} />
+            <Filters isSimplifiedMode={isSimplifiedMode} clearFiltersSignal={clearFiltersSignal} currentTaskId={currentTaskId} />
 
             <CognitiveLoadIndicator
                 cognitiveLoad={cognitiveLoad}
