@@ -337,40 +337,6 @@ function TaskExperiment(props: Props) {
     return (
         <div className="mx-4 mt-6 mb-6">
             <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
-                <div className="px-8 py-6 border-b border-gray-200 bg-gray-50">
-                    <div className="flex items-start justify-between gap-6 flex-wrap">
-                        <div>
-                            <h2 className="text-lg font-bold text-gray-900">Cognitive Load Task</h2>
-                            <p className="text-sm text-gray-600 mt-1">
-                                Round 1 runs in the normal UI.
-                                {' '}
-                                If cognitive load reaches 70%, we switch
-                                {' '}
-                                to a simplified UI for round 2.
-                            </p>
-                        </div>
-
-                        <div className="flex items-center gap-3">
-                            <label htmlFor="task-select" className="flex items-center gap-3">
-                                <span className="text-sm text-gray-600">Task</span>
-                                <select
-                                    id="task-select"
-                                    value={selectedTaskId}
-                                    onChange={(e) => setSelectedTaskId(e.target.value)}
-                                    disabled={isRunning}
-                                    className="text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-1 focus:ring-orange-500 disabled:opacity-50"
-                                >
-                                    {DEFAULT_TASKS.map((t) => (
-                                        <option key={t.id} value={t.id}>
-                                            {t.title}
-                                        </option>
-                                    ))}
-                                </select>
-                            </label>
-                        </div>
-                    </div>
-                </div>
-
                 <div className="px-8 py-6">
                     {!isConnected && (
                         <div className="mb-4 text-sm text-red-600">
@@ -380,7 +346,7 @@ function TaskExperiment(props: Props) {
                         </div>
                     )}
 
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
                         {/* Left: round + timer + controls (compact) */}
                         <div className="lg:col-span-1">
                             <div className="bg-white border border-gray-200 rounded-lg p-5">

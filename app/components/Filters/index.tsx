@@ -9,40 +9,6 @@ import Table from '#components/Table';
 import manufacturerCompatibility from '#utils/compatibility';
 import batteryData, { type FilterSection } from '#utils/filterData';
 
-// Secondary filter sections that appear below main filters
-const secondaryFilters = {
-    stockingOptions: {
-        label: 'Stocking Options',
-        options: [
-            { key: 'inStock', value: 'inStock', text: 'In Stock' },
-            { key: 'normallyStocking', value: 'normallyStocking', text: 'Normally Stocking' },
-            { key: 'newProduct', value: 'newProduct', text: 'New Product' },
-        ],
-    },
-    environmental: {
-        label: 'Environmental Options',
-        options: [
-            { key: 'rohsCompliant', value: 'rohsCompliant', text: 'RoHS Compliant' },
-            { key: 'nonRohsCompliant', value: 'nonRohsCompliant', text: 'Non-RoHS Compliant' },
-        ],
-    },
-    media: {
-        label: 'Media',
-        options: [
-            { key: 'datasheet', value: 'datasheet', text: 'Datasheet' },
-            { key: 'photo', value: 'photo', text: 'Photo' },
-            { key: 'edaCadModels', value: 'edaCadModels', text: 'EDA/CAD Models' },
-        ],
-    },
-    exclude: {
-        label: 'Exclude',
-        options: [
-            { key: 'tariffedProducts', value: 'tariffedProducts', text: 'Tariffed Products' },
-            { key: 'marketplaceProducts', value: 'marketplaceProducts', text: 'Marketplace Products' },
-        ],
-    },
-};
-
 // Simplified mode shows only essential filters
 const SIMPLIFIED_FILTER_KEYS = ['-1', '-4', '412', '2079']; // Manufacturer, Series, Battery Chemistry, Voltage
 
@@ -256,93 +222,6 @@ function Filters(props: Props) {
                     })}
                 </div>
             </div>
-
-            {/* Secondary Filters Row - Hidden in simplified mode */}
-            {!isSimplifiedMode && (
-                <div className="bg-white border-b border-gray-200 px-8 py-6">
-                    <div className="flex items-start gap-16 flex-wrap">
-                        {/* Stocking Options */}
-                        <div>
-                            <h3 className="text-sm font-semibold text-gray-900 mb-4">
-                                {secondaryFilters.stockingOptions.label}
-                            </h3>
-                            <div className="space-y-3">
-                                {secondaryFilters.stockingOptions.options.map((opt) => (
-                                    <label key={opt.key} className="flex items-center gap-3 cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            checked={selectedFilters.has(createSelectedKey('stocking', opt.value))}
-                                            onChange={() => toggleFilter('stocking', opt.value)}
-                                            className="w-4 h-4 text-orange-600 border-gray-300 rounded focus:ring-orange-500"
-                                        />
-                                        <span className="text-sm text-gray-700">{opt.text}</span>
-                                    </label>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Environmental Options */}
-                        <div>
-                            <h3 className="text-sm font-semibold text-gray-900 mb-4">
-                                {secondaryFilters.environmental.label}
-                            </h3>
-                            <div className="space-y-3">
-                                {secondaryFilters.environmental.options.map((opt) => (
-                                    <label key={opt.key} className="flex items-center gap-3 cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            checked={selectedFilters.has(createSelectedKey('environmental', opt.value))}
-                                            onChange={() => toggleFilter('environmental', opt.value)}
-                                            className="w-4 h-4 text-orange-600 border-gray-300 rounded focus:ring-orange-500"
-                                        />
-                                        <span className="text-sm text-gray-700">{opt.text}</span>
-                                    </label>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Media */}
-                        <div>
-                            <h3 className="text-sm font-semibold text-gray-900 mb-4">
-                                {secondaryFilters.media.label}
-                            </h3>
-                            <div className="space-y-3">
-                                {secondaryFilters.media.options.map((opt) => (
-                                    <label key={opt.key} className="flex items-center gap-3 cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            checked={selectedFilters.has(createSelectedKey('media', opt.value))}
-                                            onChange={() => toggleFilter('media', opt.value)}
-                                            className="w-4 h-4 text-orange-600 border-gray-300 rounded focus:ring-orange-500"
-                                        />
-                                        <span className="text-sm text-gray-700">{opt.text}</span>
-                                    </label>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Exclude */}
-                        <div>
-                            <h3 className="text-sm font-semibold text-gray-900 mb-4">
-                                {secondaryFilters.exclude.label}
-                            </h3>
-                            <div className="space-y-3">
-                                {secondaryFilters.exclude.options.map((opt) => (
-                                    <label key={opt.key} className="flex items-center gap-3 cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            checked={selectedFilters.has(createSelectedKey('exclude', opt.value))}
-                                            onChange={() => toggleFilter('exclude', opt.value)}
-                                            className="w-4 h-4 text-orange-600 border-gray-300 rounded focus:ring-orange-500"
-                                        />
-                                        <span className="text-sm text-gray-700">{opt.text}</span>
-                                    </label>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
 
             {/* Spacer between filters and table */}
             <div className="h-8 bg-gray-100" />
