@@ -1,20 +1,15 @@
 import { useCallback, useState } from 'react';
 
-import CognitiveLoadIndicator from '#components/CognitiveLoadIndicator';
 import Filters from '#components/Filters';
 import TaskExperiment from '#components/TaskExperiment';
 import { useCognitiveLoad } from '#hooks/useCognitiveLoad';
-
-const HIGH_LOAD_THRESHOLD = 5; // Number of consecutive high readings before warning
 
 function Home() {
     const {
         cognitiveLoad,
         isConnected,
-        error,
-        highLoadCount,
     } = useCognitiveLoad({
-        highLoadThreshold: HIGH_LOAD_THRESHOLD,
+        highLoadThreshold: 5,
         highLoadScoreThreshold: 0.7,
     });
 
@@ -33,28 +28,20 @@ function Home() {
     return (
         <div className="min-h-screen bg-gray-100">
             <div style={{ width: '90%', marginLeft: 'auto', marginRight: 'auto' }}>
-                <TaskExperiment
-                    cognitiveLoad={cognitiveLoad}
-                    isConnected={isConnected}
-                    isSimplifiedMode={isSimplifiedMode}
-                    setIsSimplifiedMode={setIsSimplifiedMode}
-                    onClearAllFilters={clearAllFilters}
-                    onTaskChange={handleTaskChange}
-                />
+            <TaskExperiment
+                cognitiveLoad={cognitiveLoad}
+                isConnected={isConnected}
+                isSimplifiedMode={isSimplifiedMode}
+                setIsSimplifiedMode={setIsSimplifiedMode}
+                onClearAllFilters={clearAllFilters}
+                onTaskChange={handleTaskChange}
+            />
                 <Filters
                     isSimplifiedMode={isSimplifiedMode}
                     clearFiltersSignal={clearFiltersSignal}
                     currentTaskId={currentTaskId}
                 />
             </div>
-
-            <CognitiveLoadIndicator
-                cognitiveLoad={cognitiveLoad}
-                isConnected={isConnected}
-                error={error}
-                highLoadCount={highLoadCount}
-                highLoadThreshold={HIGH_LOAD_THRESHOLD}
-            />
 
             {/* Simplified mode indicator */}
             {isSimplifiedMode && (

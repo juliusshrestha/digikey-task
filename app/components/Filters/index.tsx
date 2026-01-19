@@ -16,9 +16,9 @@ const SIMPLIFIED_FILTER_KEYS = ['-1', '-4', '412', '2079']; // Manufacturer, Ser
 // Map task IDs to their relevant filter keys for simplified mode
 const TASK_FILTER_MAP: Record<string, string[]> = {
     'battery-task-1': ['-1', '412', '32', '2079'], // Manufacturer, Battery Chemistry, Battery Cell Size, Voltage - Rated
-    'battery-task-2': ['412', '2079'], // Battery Chemistry, Voltage - Rated
-    'battery-task-3': ['46', '33', '-1'], // Size/Dimension, Capacity, Manufacturer
-    'battery-task-4': ['32', '2079', '46'], // Battery Cell Size, Voltage - Rated, Size/Dimension
+    'battery-task-2': ['412', '32', '2079', '33'], // Battery Chemistry, Battery Cell Size, Voltage - Rated, Capacity
+    'battery-task-3': ['412', '32', '2079', '33'], // Battery Chemistry, Battery Cell Size, Voltage - Rated, Capacity
+    'battery-task-4': ['412', '32', '2079', '33'], // Battery Chemistry, Battery Cell Size, Voltage - Rated, Capacity
     'battery-task-5': ['-1', '1989', '2079'], // Manufacturer, Product Status, Voltage - Rated
 };
 

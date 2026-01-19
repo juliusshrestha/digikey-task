@@ -67,12 +67,12 @@ const DEFAULT_TASKS: TaskDefinition[] = [
         id: 'battery-task-1',
         title: 'Task: Find a specific Panasonic Energy battery',
         instructions: [
-            'Find the battery: BK-200AAB9B-0597 (BATTERY NIMH 1.2V 1.9AH AA) by Panasonic Energy.',
+            'Find the battery: BK-200AAB9B-0597 (BATTERY NIMH 1.2V AA) by Panasonic Energy.',
             'Use filters to narrow down the search:',
-            '1. Select Manufacturer: Panasonic Energy',
-            '2. Select Battery Chemistry: Nickel Metal Hydride',
-            '3. Select Battery Cell Size: AA',
-            '4. Select Voltage - Rated: 1.2 V',
+            'Select Manufacturer: Panasonic Energy',
+            'Select Battery Chemistry: Nickel Metal Hydride',
+            'Select Battery Cell Size: AA',
+            'Select Voltage - Rated: 1.2 V',
             'Find the product in the filtered results.',
             'Click "Complete task" when you are done.',
         ],
@@ -80,37 +80,44 @@ const DEFAULT_TASKS: TaskDefinition[] = [
     },
     {
         id: 'battery-task-2',
-        title: 'Task: Find a matching battery part',
+        title: 'Task: Find number of manufacturers for specific battery configuration',
         instructions: [
-            'Use filters to narrow down the list.',
-            'Try selecting Battery Chemistry and Voltage - Rated.',
-            'Pick any product from the table and note the Mfr Part #.',
+            'Find how many manufacturers produce batteries with the following specifications:',
+            'Select Battery Chemistry: Nickel Metal Hydride',
+            'Select Battery Cell Size: AA',
+            'Select Voltage - Rated: 1.2 V',
+            'Select Capacity: 1.5Ah',
+            'After applying these filters, count how many different manufacturers are available in the filtered results.',
             'Click "Complete task" when you are done.',
         ],
         timeLimitSeconds: 60,
     },
     {
         id: 'battery-task-3',
-        title: 'Task: Find a battery by dimensions and capacity',
+        title: 'Task: Find Seiko Instruments coin battery',
         instructions: [
-            'Use filters to narrow down by size and capacity.',
-            'Select Size / Dimension filter and choose a dimension option.',
-            'Select Capacity filter and choose a capacity value.',
-            'Optionally select Manufacturer filter for further narrowing.',
-            'Pick any product from the table and note the Mfr Part #.',
+            'Find the battery: MS621T-0585 (BATT LITHIUM 3V 3MAH COIN) by Seiko Instruments.',
+            'Use filters to narrow down the search:',
+            '1. Select Battery Chemistry: Lithium',
+            '2. Select Battery Cell Size: Coin, 6.8mm',
+            '3. Select Voltage - Rated: 3 V',
+            '4. Select Capacity: 3mAh',
+            'Find the product in the filtered results.',
             'Click "Complete task" when you are done.',
         ],
         timeLimitSeconds: 60,
     },
     {
         id: 'battery-task-4',
-        title: 'Task: Find a battery with specific cell size and voltage',
+        title: 'Task: Find ZEUS Battery Products 18650 battery',
         instructions: [
-            'Use filters to find a battery with specific characteristics.',
-            'Select Battery Cell Size filter and choose a cell size.',
-            'Select Voltage - Rated filter and choose a voltage value.',
-            'Select Size / Dimension filter to further narrow the results.',
-            'Pick any product from the filtered table and note the Mfr Part #.',
+            'Find the battery: PCIFR18650-1500-0024 (BATTERY LITHIUM 3.2V 1.5AH 18650) by ZEUS Battery Products.',
+            'Use filters to narrow down the search:',
+            '1. Select Battery Chemistry: Lithium Iron Phosphate',
+            '2. Select Battery Cell Size: 18650',
+            '3. Select Voltage - Rated: 3.2 V',
+            '4. Select Capacity: 1.5Ah',
+            'Find the product in the filtered results.',
             'Click "Complete task" when you are done.',
         ],
         timeLimitSeconds: 60,
@@ -205,6 +212,9 @@ function TaskExperiment(props: Props) {
     // Track when simplified mode was activated
     const simplifiedModeActivatedAtMsRef = useRef<number | null>(null);
 
+    // Track if user dismissed the warning (so it won't show again)
+    const warningDismissedRef = useRef(false);
+
     // Grace period tracking (30 seconds)
     const GRACE_PERIOD_SECONDS = 30;
     const gracePeriodEndedRef = useRef(false);
@@ -222,6 +232,7 @@ function TaskExperiment(props: Props) {
         sumEmotionRef.current = 0;
         sumMouseRef.current = 0;
         gracePeriodEndedRef.current = false;
+        warningDismissedRef.current = false;
 
         // Reset phase accumulators
         phase1SampleCountRef.current = 0;
@@ -508,8 +519,15 @@ function TaskExperiment(props: Props) {
         }
 
         // After 30 seconds: show modal whenever cognitive load crosses 70%
-        // But only if user is NOT already in simplified mode
-        if (!isInGracePeriod && currentRound === 1 && isHigh && !showWarning && !isSimplifiedMode) {
+        // But only if user is NOT already in simplified mode and hasn't dismissed the warning
+        if (
+            !isInGracePeriod
+            && currentRound === 1
+            && isHigh
+            && !showWarning
+            && !isSimplifiedMode
+            && !warningDismissedRef.current
+        ) {
             setShowWarning(true);
         }
     }, [cognitiveLoad, currentRound, isRunning, showWarning, isSimplifiedMode]);
@@ -605,6 +623,7 @@ function TaskExperiment(props: Props) {
                 isVisible={showWarning}
                 onDismiss={() => {
                     setShowWarning(false);
+                    warningDismissedRef.current = true;
                 }}
                 onAcceptChange={() => {
                     setShowWarning(false);
@@ -648,7 +667,6 @@ function TaskExperiment(props: Props) {
                 isRunning={isRunning}
                 onStartRound={startRound}
                 canStart={canStart}
-                currentRound={currentRound}
             />
         </div>
     );

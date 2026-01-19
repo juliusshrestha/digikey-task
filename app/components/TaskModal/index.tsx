@@ -17,7 +17,6 @@ interface Props {
     isRunning: boolean;
     onStartRound: () => void;
     canStart: boolean;
-    currentRound: 1 | 2;
 }
 
 function TaskModal(props: Props) {
@@ -31,10 +30,12 @@ function TaskModal(props: Props) {
         isRunning,
         onStartRound,
         canStart,
-        currentRound,
     } = props;
 
     const selectedTask = tasks.find((t) => t.id === selectedTaskId) ?? tasks[0];
+
+    // Extract task number from task ID (e.g., 'battery-task-1' -> 1)
+    const taskNumber = selectedTaskId.match(/\d+$/)?.[0] ?? '1';
 
     if (!isVisible) return null;
 
@@ -100,7 +101,15 @@ function TaskModal(props: Props) {
                 </div>
 
                 {/* Footer */}
-                <div className="px-12 py-5 bg-gray-50 border-t border-gray-200" style={{ marginLeft: '3%', marginTop: '2%', marginBottom: '2%', marginRight: '3%' }}>
+                <div
+                    className="px-12 py-5 bg-gray-50 border-t border-gray-200"
+                    style={{
+                        marginLeft: '3%',
+                        marginTop: '2%',
+                        marginBottom: '2%',
+                        marginRight: '3%',
+                    }}
+                >
                     {!hasStartedExperiment ? (
                         <div className="flex flex-col gap-3 sm:flex-row">
                             <button
@@ -119,7 +128,9 @@ function TaskModal(props: Props) {
                                 disabled={!canStart}
                                 className="flex-1 px-5 py-3.5 text-base font-semibold text-white bg-[#2d2d86] rounded-xl hover:bg-[#3d3d96] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             >
-                                {currentRound === 1 ? 'Start round 1' : 'Start round 2'}
+                                Start Task
+                                {' '}
+                                {taskNumber}
                             </button>
                         </div>
                     ) : (
