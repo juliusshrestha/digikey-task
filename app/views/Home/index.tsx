@@ -32,15 +32,21 @@ function Home() {
 
     return (
         <div className="min-h-screen bg-gray-100">
-            <TaskExperiment
-                cognitiveLoad={cognitiveLoad}
-                isConnected={isConnected}
-                isSimplifiedMode={isSimplifiedMode}
-                setIsSimplifiedMode={setIsSimplifiedMode}
-                onClearAllFilters={clearAllFilters}
-                onTaskChange={handleTaskChange}
-            />
-            <Filters isSimplifiedMode={isSimplifiedMode} clearFiltersSignal={clearFiltersSignal} currentTaskId={currentTaskId} />
+            <div style={{ width: '90%', marginLeft: 'auto', marginRight: 'auto' }}>
+                <TaskExperiment
+                    cognitiveLoad={cognitiveLoad}
+                    isConnected={isConnected}
+                    isSimplifiedMode={isSimplifiedMode}
+                    setIsSimplifiedMode={setIsSimplifiedMode}
+                    onClearAllFilters={clearAllFilters}
+                    onTaskChange={handleTaskChange}
+                />
+                <Filters
+                    isSimplifiedMode={isSimplifiedMode}
+                    clearFiltersSignal={clearFiltersSignal}
+                    currentTaskId={currentTaskId}
+                />
+            </div>
 
             <CognitiveLoadIndicator
                 cognitiveLoad={cognitiveLoad}

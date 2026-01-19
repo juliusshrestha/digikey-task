@@ -7,8 +7,9 @@ import {
 } from 'react';
 
 import HighCognitiveLoadWarning from '#components/HighCognitiveLoadWarning';
+import ResultsModal from '#components/ResultsModal';
+import TaskModal from '#components/TaskModal';
 import type { CognitiveLoadData } from '#hooks/useCognitiveLoad';
-import productData from '#utils/productData';
 
 interface TaskDefinition {
     id: string;
@@ -19,15 +20,7 @@ interface TaskDefinition {
 
 type RoundId = 1 | 2;
 
-interface RoundResult {
-    round: RoundId;
-    startedAtMs: number;
-    endedAtMs: number;
-    endedReason: 'completed' | 'time_limit' | 'threshold_reached' | 'cancelled';
-    durationSeconds: number;
-    thresholdReached: boolean;
-    answerText: string;
-    isAnswerValid: boolean;
+interface PhaseMetrics {
     sampleCount: number;
     avgScore: number;
     maxScore: number;
@@ -36,6 +29,28 @@ interface RoundResult {
     avgGaze: number;
     avgEmotion: number;
     avgMouse: number;
+    durationSeconds: number;
+}
+
+interface RoundResult {
+    round: RoundId;
+    startedAtMs: number;
+    endedAtMs: number;
+    endedReason: 'completed' | 'time_limit' | 'threshold_reached' | 'cancelled';
+    durationSeconds: number;
+    thresholdReached: boolean;
+    sampleCount: number;
+    avgScore: number;
+    maxScore: number;
+    highScoreCount: number;
+    overloadCount: number;
+    avgGaze: number;
+    avgEmotion: number;
+    avgMouse: number;
+    // Phase-based metrics
+    phase1?: PhaseMetrics; // Before simplified UI
+    phase2?: PhaseMetrics; // In simplified UI
+    simplifiedModeActivatedAtMs?: number;
 }
 
 interface Props {
@@ -48,15 +63,17 @@ interface Props {
 }
 
 const DEFAULT_TASKS: TaskDefinition[] = [
-    
     {
         id: 'battery-task-1',
-        title: 'Task: Find a battery with specific size and dimensions',
+        title: 'Task: Find a specific Panasonic Energy battery',
         instructions: [
-            'Use filters to find a battery with specific size.',
-            'Select Size / Dimension filter and choose any size option.',
-            'Also select Battery Cell Size and Voltage - Rated filters.',
-            'Pick any product from the filtered results and note the Mfr Part #.',
+            'Find the battery: BK-200AAB9B-0597 (BATTERY NIMH 1.2V 1.9AH AA) by Panasonic Energy.',
+            'Use filters to narrow down the search:',
+            '1. Select Manufacturer: Panasonic Energy',
+            '2. Select Battery Chemistry: Nickel Metal Hydride',
+            '3. Select Battery Cell Size: AA',
+            '4. Select Voltage - Rated: 1.2 V',
+            'Find the product in the filtered results.',
             'Click "Complete task" when you are done.',
         ],
         timeLimitSeconds: 60,
@@ -98,6 +115,20 @@ const DEFAULT_TASKS: TaskDefinition[] = [
         ],
         timeLimitSeconds: 60,
     },
+    {
+        id: 'battery-task-5',
+        title: 'Task: Find Panasonic Energy product with least quantity',
+        instructions: [
+            'Search for Panasonic Energy manufacturer products.',
+            'Use filters to narrow down:',
+            '1. Select Manufacturer: Panasonic Energy',
+            '2. Select Product Status: Active',
+            '3. Select Voltage - Rated: 1.2 V',
+            'Find the product with the least quantity available in the filtered results.',
+            'Click "Complete task" when you are done.',
+        ],
+        timeLimitSeconds: 60,
+    },
 ];
 
 const SCORE_THRESHOLD = 0.7; // 70%
@@ -127,11 +158,11 @@ function TaskExperiment(props: Props) {
 
     const [currentRound, setCurrentRound] = useState<RoundId>(1);
     const [isRunning, setIsRunning] = useState(false);
-    const [timeLeftSeconds, setTimeLeftSeconds] = useState(selectedTask.timeLimitSeconds);
+    const [timeLeftSeconds, setTimeLeftSeconds] = useState(0);
     const [showWarning, setShowWarning] = useState(false);
+    const [showResultsModal, setShowResultsModal] = useState(false);
+    const [showTaskModal, setShowTaskModal] = useState(false);
     const [hasStartedExperiment, setHasStartedExperiment] = useState(false);
-    const [answerText, setAnswerText] = useState('');
-    const [answerTouched, setAnswerTouched] = useState(false);
 
     const [roundResults, setRoundResults] = useState<RoundResult[]>([]);
 
@@ -147,13 +178,36 @@ function TaskExperiment(props: Props) {
     const sumGazeRef = useRef(0);
     const sumEmotionRef = useRef(0);
     const sumMouseRef = useRef(0);
-    
+
+    // Phase-based accumulators
+    // Phase 1: Before simplified UI
+    const phase1SampleCountRef = useRef(0);
+    const phase1SumScoreRef = useRef(0);
+    const phase1MaxScoreRef = useRef(0);
+    const phase1HighScoreCountRef = useRef(0);
+    const phase1OverloadCountRef = useRef(0);
+    const phase1SumGazeRef = useRef(0);
+    const phase1SumEmotionRef = useRef(0);
+    const phase1SumMouseRef = useRef(0);
+    const phase1StartedAtMsRef = useRef<number | null>(null);
+
+    // Phase 2: In simplified UI
+    const phase2SampleCountRef = useRef(0);
+    const phase2SumScoreRef = useRef(0);
+    const phase2MaxScoreRef = useRef(0);
+    const phase2HighScoreCountRef = useRef(0);
+    const phase2OverloadCountRef = useRef(0);
+    const phase2SumGazeRef = useRef(0);
+    const phase2SumEmotionRef = useRef(0);
+    const phase2SumMouseRef = useRef(0);
+    const phase2StartedAtMsRef = useRef<number | null>(null);
+
+    // Track when simplified mode was activated
+    const simplifiedModeActivatedAtMsRef = useRef<number | null>(null);
+
     // Grace period tracking (30 seconds)
     const GRACE_PERIOD_SECONDS = 30;
-    const thresholdReachedDuringGracePeriodRef = useRef(false);
-    const thresholdReachedAfterGracePeriodRef = useRef(false);
     const gracePeriodEndedRef = useRef(false);
-    const taskContinuedInSimplifiedModeRef = useRef(false);
 
     const resetAccumulators = useCallback(() => {
         startedAtMsRef.current = null;
@@ -167,42 +221,31 @@ function TaskExperiment(props: Props) {
         sumGazeRef.current = 0;
         sumEmotionRef.current = 0;
         sumMouseRef.current = 0;
-        thresholdReachedDuringGracePeriodRef.current = false;
-        thresholdReachedAfterGracePeriodRef.current = false;
         gracePeriodEndedRef.current = false;
-        taskContinuedInSimplifiedModeRef.current = false;
+
+        // Reset phase accumulators
+        phase1SampleCountRef.current = 0;
+        phase1SumScoreRef.current = 0;
+        phase1MaxScoreRef.current = 0;
+        phase1HighScoreCountRef.current = 0;
+        phase1OverloadCountRef.current = 0;
+        phase1SumGazeRef.current = 0;
+        phase1SumEmotionRef.current = 0;
+        phase1SumMouseRef.current = 0;
+        phase1StartedAtMsRef.current = null;
+
+        phase2SampleCountRef.current = 0;
+        phase2SumScoreRef.current = 0;
+        phase2MaxScoreRef.current = 0;
+        phase2HighScoreCountRef.current = 0;
+        phase2OverloadCountRef.current = 0;
+        phase2SumGazeRef.current = 0;
+        phase2SumEmotionRef.current = 0;
+        phase2SumMouseRef.current = 0;
+        phase2StartedAtMsRef.current = null;
+
+        simplifiedModeActivatedAtMsRef.current = null;
     }, []);
-
-    const validMfrPartNumbers = useMemo(() => {
-        const full = new Set<string>();
-        const base = new Set<string>();
-
-        const normalize = (s: string) => s.trim().toLowerCase();
-        const stripSuffix = (s: string) => s.replace(/-\d{4}$/, '');
-
-        productData.forEach((items) => {
-            const detail = items.find((i) => i.type === 'productDetail');
-            if (detail?.type !== 'productDetail') return;
-
-            const pn = detail.value.productNumber;
-            if (!pn) return;
-
-            const normalized = normalize(pn);
-            full.add(normalized);
-            base.add(normalize(stripSuffix(pn)));
-        });
-
-        return { full, base };
-    }, []);
-
-    const isAnswerValid = useMemo(() => {
-        const normalized = answerText.trim().toLowerCase();
-        if (!normalized) return false;
-
-        if (validMfrPartNumbers.full.has(normalized)) return true;
-        if (validMfrPartNumbers.base.has(normalized)) return true;
-        return false;
-    }, [answerText, validMfrPartNumbers.base, validMfrPartNumbers.full]);
 
     const finalizeRound = useCallback((endedReason: RoundResult['endedReason']) => {
         const startedAtMs = startedAtMsRef.current ?? Date.now();
@@ -218,6 +261,55 @@ function TaskExperiment(props: Props) {
         const avgEmotion = sampleCount > 0 ? sumEmotionRef.current / sampleCount : 0;
         const avgMouse = sampleCount > 0 ? sumMouseRef.current / sampleCount : 0;
 
+        // Calculate phase 1 metrics (before simplified UI)
+        const phase1SampleCount = phase1SampleCountRef.current;
+        let phase1DurationSeconds = durationSeconds;
+        if (phase1StartedAtMsRef.current && simplifiedModeActivatedAtMsRef.current) {
+            const phase1Start = phase1StartedAtMsRef.current;
+            const simplifiedStart = simplifiedModeActivatedAtMsRef.current;
+            phase1DurationSeconds = Math.max(
+                0,
+                Math.round((simplifiedStart - phase1Start) / 1000),
+            );
+        } else if (simplifiedModeActivatedAtMsRef.current) {
+            phase1DurationSeconds = 0;
+        }
+
+        const phase1: PhaseMetrics | undefined = phase1SampleCount > 0
+            ? {
+                sampleCount: phase1SampleCount,
+                avgScore: phase1SumScoreRef.current / phase1SampleCount,
+                maxScore: phase1MaxScoreRef.current,
+                highScoreCount: phase1HighScoreCountRef.current,
+                overloadCount: phase1OverloadCountRef.current,
+                avgGaze: phase1SumGazeRef.current / phase1SampleCount,
+                avgEmotion: phase1SumEmotionRef.current / phase1SampleCount,
+                avgMouse: phase1SumMouseRef.current / phase1SampleCount,
+                durationSeconds: phase1DurationSeconds,
+            }
+            : undefined;
+
+        // Calculate phase 2 metrics (in simplified UI)
+        const phase2SampleCount = phase2SampleCountRef.current;
+        let phase2DurationSeconds = 0;
+        if (phase2StartedAtMsRef.current && simplifiedModeActivatedAtMsRef.current) {
+            phase2DurationSeconds = Math.max(
+                0,
+                Math.round((endedAtMs - simplifiedModeActivatedAtMsRef.current) / 1000),
+            );
+        }
+        const phase2: PhaseMetrics | undefined = phase2SampleCount > 0 ? {
+            sampleCount: phase2SampleCount,
+            avgScore: phase2SumScoreRef.current / phase2SampleCount,
+            maxScore: phase2MaxScoreRef.current,
+            highScoreCount: phase2HighScoreCountRef.current,
+            overloadCount: phase2OverloadCountRef.current,
+            avgGaze: phase2SumGazeRef.current / phase2SampleCount,
+            avgEmotion: phase2SumEmotionRef.current / phase2SampleCount,
+            avgMouse: phase2SumMouseRef.current / phase2SampleCount,
+            durationSeconds: phase2DurationSeconds,
+        } : undefined;
+
         setRoundResults((prev) => ([
             ...prev,
             {
@@ -227,8 +319,6 @@ function TaskExperiment(props: Props) {
                 endedReason,
                 durationSeconds,
                 thresholdReached: thresholdReachedRef.current,
-                answerText,
-                isAnswerValid,
                 sampleCount,
                 avgScore,
                 maxScore,
@@ -237,12 +327,15 @@ function TaskExperiment(props: Props) {
                 avgGaze,
                 avgEmotion,
                 avgMouse,
+                phase1,
+                phase2,
+                simplifiedModeActivatedAtMs: simplifiedModeActivatedAtMsRef.current ?? undefined,
             },
         ]));
 
         setIsRunning(false);
         resetAccumulators();
-    }, [answerText, currentRound, isAnswerValid, resetAccumulators]);
+    }, [currentRound, resetAccumulators]);
 
     const startRound = useCallback(() => {
         if (!selectedTask) return;
@@ -251,20 +344,19 @@ function TaskExperiment(props: Props) {
         // Each round starts from a clean filter state
         onClearAllFilters();
 
-        // Round 1 starts in normal UI, round 2 starts in simplified UI
-        if (currentRound === 1) setIsSimplifiedMode(false);
-        if (currentRound === 2) setIsSimplifiedMode(true);
+        // Both rounds start in normal (extensive) UI
+        setIsSimplifiedMode(false);
 
         setShowWarning(false);
         if (currentRound === 1) {
             setHasStartedExperiment(true);
         }
-        setAnswerText('');
-        setAnswerTouched(false);
         setIsRunning(true);
-        setTimeLeftSeconds(selectedTask.timeLimitSeconds);
+        setTimeLeftSeconds(0);
         resetAccumulators();
         startedAtMsRef.current = Date.now();
+        // Initialize phase 1 (before simplified UI)
+        phase1StartedAtMsRef.current = Date.now();
     }, [
         currentRound,
         isConnected,
@@ -282,114 +374,50 @@ function TaskExperiment(props: Props) {
 
     const completeRound = useCallback(() => {
         if (!isRunning) return;
-        if (!isAnswerValid) {
-            setAnswerTouched(true);
-            return;
-        }
         finalizeRound('completed');
 
-        if (currentRound === 1) {
-            // If task was continued in simplified mode, Round 2 starts after completion
-            if (taskContinuedInSimplifiedModeRef.current) {
-                // Task was completed after switching to simplified mode
-                // Now start Round 2 (fresh start of same task in simplified mode)
-                setIsSimplifiedMode(true);
-                setCurrentRound(2);
-                onClearAllFilters();
-            }
-            // SCENARIO A: Early threshold but successful completion (No Warning)
-            // If threshold was reached ONLY during grace period and NOT after, skip warning
-            else if (
-                thresholdReachedDuringGracePeriodRef.current
-                && !thresholdReachedAfterGracePeriodRef.current
-            ) {
-                // User successfully managed the load without intervention
-                setIsSimplifiedMode(true);
-                setCurrentRound(2);
-                onClearAllFilters();
-            }
-            // SCENARIO C: Threshold reached after grace period - warning already shown
-            // If threshold was reached after grace period, warning was shown immediately
-            // Just move to round 2 (warning modal onAcceptChange handles this)
-            else if (thresholdReachedAfterGracePeriodRef.current) {
-                // Warning was already shown, user may have dismissed it
-                // If they completed, move to round 2
-                setIsSimplifiedMode(true);
-                setCurrentRound(2);
-                onClearAllFilters();
-            }
-            // No threshold reached at all - move directly to round 2
-            else {
-                setIsSimplifiedMode(true);
-                setCurrentRound(2);
-                onClearAllFilters();
-            }
-        }
-    }, [
-        currentRound,
-        finalizeRound,
-        isAnswerValid,
-        isRunning,
-        onClearAllFilters,
-        setIsSimplifiedMode,
-    ]);
-
-    const startOver = useCallback(() => {
+        // Reset state but keep results
         setShowWarning(false);
         setIsRunning(false);
         setCurrentRound(1);
         setIsSimplifiedMode(false);
-        setRoundResults([]);
         setHasStartedExperiment(false);
-        setAnswerText('');
-        setAnswerTouched(false);
-        setTimeLeftSeconds(selectedTask.timeLimitSeconds);
+        setTimeLeftSeconds(0);
         resetAccumulators();
         onClearAllFilters();
-    }, [onClearAllFilters, resetAccumulators, selectedTask.timeLimitSeconds, setIsSimplifiedMode]);
+    }, [
+        finalizeRound,
+        isRunning,
+        onClearAllFilters,
+        resetAccumulators,
+        setIsSimplifiedMode,
+    ]);
 
-    // Timer
+    const resetResults = useCallback(() => {
+        setRoundResults([]);
+    }, []);
+
+    const switchToSimplifiedUI = useCallback(() => {
+        if (!isRunning) return;
+        // Track when simplified mode is activated
+        simplifiedModeActivatedAtMsRef.current = Date.now();
+        // Initialize phase 2 (in simplified UI)
+        phase2StartedAtMsRef.current = Date.now();
+        setIsSimplifiedMode(true);
+        // Reset filter selections when transitioning to simplified view
+        onClearAllFilters();
+    }, [isRunning, setIsSimplifiedMode, onClearAllFilters]);
+
+    // Timer - removed time limit, task runs until user completes it
     useEffect(() => {
         if (!isRunning) return undefined;
 
         const timer = setInterval(() => {
-            setTimeLeftSeconds((prev) => {
-                if (prev <= 1) {
-                    // Time limit reached (1 minute)
-                    if (currentRound === 1 && !taskContinuedInSimplifiedModeRef.current) {
-                        // Check if threshold was exceeded after grace period
-                        if (thresholdReachedAfterGracePeriodRef.current) {
-                            // Threshold exceeded: Continue same task in simplified mode
-                            taskContinuedInSimplifiedModeRef.current = true;
-                            setIsSimplifiedMode(true);
-                            // Don't finalize the round, continue the task
-                            // Reset timer to give more time or extend it
-                            return selectedTask.timeLimitSeconds; // Give another full minute
-                        } else {
-                            // No threshold exceeded: Finalize round and show warning
-                            finalizeRound('time_limit');
-                            // SCENARIO B: Failure to complete without threshold after grace period
-                            // Show warning if threshold was NOT reached after grace period
-                            setShowWarning(true);
-                            return 0;
-                        }
-                    } else {
-                        // Time limit reached in other scenarios, finalize the round
-                        finalizeRound('time_limit');
-                        if (currentRound === 1) {
-                            setIsSimplifiedMode(true);
-                            setCurrentRound(2);
-                            onClearAllFilters();
-                        }
-                        return 0;
-                    }
-                }
-                return prev - 1;
-            });
+            setTimeLeftSeconds((prev) => prev + 1);
         }, 1000);
 
         return () => clearInterval(timer);
-    }, [currentRound, finalizeRound, isRunning, onClearAllFilters, setIsSimplifiedMode, selectedTask.timeLimitSeconds]);
+    }, [isRunning]);
 
     // Sample cognitive load while running
     useEffect(() => {
@@ -409,44 +437,82 @@ function TaskExperiment(props: Props) {
         // Some backends send score as 0..1, others as 0..100.
         const rawScore = cognitiveLoad.score ?? 0;
         const normalizedScore = rawScore > 1 ? rawScore / 100 : rawScore;
-        const isHigh = normalizedScore >= SCORE_THRESHOLD;
 
+        const gazeScore = cognitiveLoad.gaze_score ?? 0;
+        const emotionScore = cognitiveLoad.emotion_score ?? 0;
+        const mouseScore = cognitiveLoad.mouse_score ?? 0;
+
+        // Route samples to appropriate phase based on simplified mode
+        if (isSimplifiedMode) {
+            // Phase 2: In simplified UI
+            if (!phase2StartedAtMsRef.current) {
+                phase2StartedAtMsRef.current = Date.now();
+            }
+            phase2SampleCountRef.current += 1;
+            phase2SumScoreRef.current += normalizedScore;
+            phase2MaxScoreRef.current = Math.max(phase2MaxScoreRef.current, normalizedScore);
+            phase2SumGazeRef.current += gazeScore;
+            phase2SumEmotionRef.current += emotionScore;
+            phase2SumMouseRef.current += mouseScore;
+
+            if (cognitiveLoad.overload_detected) {
+                phase2OverloadCountRef.current += 1;
+            }
+
+            if (normalizedScore >= SCORE_THRESHOLD) {
+                phase2HighScoreCountRef.current += 1;
+            }
+        } else {
+            // Phase 1: Before simplified UI
+            phase1SampleCountRef.current += 1;
+            phase1SumScoreRef.current += normalizedScore;
+            phase1MaxScoreRef.current = Math.max(phase1MaxScoreRef.current, normalizedScore);
+            phase1SumGazeRef.current += gazeScore;
+            phase1SumEmotionRef.current += emotionScore;
+            phase1SumMouseRef.current += mouseScore;
+
+            if (cognitiveLoad.overload_detected) {
+                phase1OverloadCountRef.current += 1;
+            }
+
+            if (normalizedScore >= SCORE_THRESHOLD) {
+                phase1HighScoreCountRef.current += 1;
+            }
+        }
+
+        // Always track samples for overall final results
         sampleCountRef.current += 1;
         sumScoreRef.current += normalizedScore;
         maxScoreRef.current = Math.max(maxScoreRef.current, normalizedScore);
-        sumGazeRef.current += cognitiveLoad.gaze_score ?? 0;
-        sumEmotionRef.current += cognitiveLoad.emotion_score ?? 0;
-        sumMouseRef.current += cognitiveLoad.mouse_score ?? 0;
+        sumGazeRef.current += gazeScore;
+        sumEmotionRef.current += emotionScore;
+        sumMouseRef.current += mouseScore;
 
         if (cognitiveLoad.overload_detected) {
             overloadCountRef.current += 1;
         }
 
+        const isHigh = normalizedScore >= SCORE_THRESHOLD;
         if (isHigh) {
             highScoreCountRef.current += 1;
             consecutiveHighRef.current += 1;
+            thresholdReachedRef.current = true;
         } else {
             consecutiveHighRef.current = 0;
         }
 
-        // Track threshold detection based on grace period
-        if (currentRound === 1 && isHigh) {
-            thresholdReachedRef.current = true;
-
-            if (isInGracePeriod) {
-                // Threshold reached during grace period (first 30 seconds)
-                thresholdReachedDuringGracePeriodRef.current = true;
-                // DO NOT show warning modal during grace period
-            } else {
-                // SCENARIO C: Threshold reached AFTER grace period
-                thresholdReachedAfterGracePeriodRef.current = true;
-                // Show warning modal IMMEDIATELY
-                if (!showWarning) {
-                    setShowWarning(true);
-                }
-            }
+        // During first 30 seconds: monitor but don't show modal
+        if (isInGracePeriod && currentRound === 1) {
+            // Just monitor, don't show warning
+            return;
         }
-    }, [cognitiveLoad, currentRound, isRunning, showWarning]);
+
+        // After 30 seconds: show modal whenever cognitive load crosses 70%
+        // But only if user is NOT already in simplified mode
+        if (!isInGracePeriod && currentRound === 1 && isHigh && !showWarning && !isSimplifiedMode) {
+            setShowWarning(true);
+        }
+    }, [cognitiveLoad, currentRound, isRunning, showWarning, isSimplifiedMode]);
 
     const canStart = isConnected && !isRunning;
 
@@ -463,309 +529,71 @@ function TaskExperiment(props: Props) {
     }, [round1, round2]);
 
     return (
-        <div className="mx-4 mt-6 mb-6">
+        <div className="mt-4 mb-4">
             <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
-                <div className="px-8 py-6">
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
-                        {/* Left: round + timer + controls */}
-                        <div className="flex flex-col">
-                            <div className="bg-white border border-gray-200 rounded-lg p-5 h-full flex flex-col">
-                                {!hasStartedExperiment && (
-                                    <div className="mb-4">
-                                        <label htmlFor="task-selector" className="block text-sm font-semibold text-gray-900 mb-2">
-                                            Select Task
-                                        </label>
-                                        <select
-                                            id="task-selector"
-                                            value={selectedTaskId}
-                                            onChange={(e) => {
-                                                setSelectedTaskId(e.target.value);
-                                            }}
-                                            disabled={isRunning}
-                                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 disabled:bg-gray-50 disabled:cursor-not-allowed"
-                                        >
-                                            {DEFAULT_TASKS.map((task) => (
-                                                <option key={task.id} value={task.id}>
-                                                    {task.title}
-                                                </option>
-                                            ))}
-                                        </select>
+                <div className="px-6 py-4">
+                    <div className="flex flex-col">
+                        {/* Controls and status */}
+                        <div className="bg-white border border-gray-200 rounded-lg p-4">
+                            <div className="flex items-center justify-between mb-4">
+                                <div>
+                                    <div className="text-sm font-semibold text-gray-900">
+                                        Current round:
+                                        {' '}
+                                        {currentRound}
                                     </div>
-                                )}
-                                <div className="text-sm font-semibold text-gray-900">
-                                    Current round:
-                                    {' '}
-                                    {currentRound}
-                                </div>
-                                <div className="text-sm text-gray-700 mt-1">
-                                    Time left:
-                                    {' '}
-                                    <span className="font-semibold">
-                                        {timeLeftSeconds}
-                                        s
-                                    </span>
-                                </div>
-
-                                <div className="mt-3 max-w-sm">
-                                    <div className="h-1 bg-gray-200 rounded-full overflow-hidden">
-                                        <div
-                                            className="h-full bg-orange-500 transition-all duration-500"
-                                            style={{
-                                                width: `${selectedTask ? ((selectedTask.timeLimitSeconds - timeLeftSeconds) / selectedTask.timeLimitSeconds) * 100 : 0}%`,
-                                            }}
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="mt-4 flex items-center gap-2 flex-wrap">
-                                    <button
-                                        type="button"
-                                        onClick={startRound}
-                                        disabled={!canStart}
-                                        className="px-3.5 py-2 rounded-lg bg-[#2d2d86] text-white text-sm font-medium hover:bg-[#3d3d96] disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        {currentRound === 1 ? 'Start round 1' : 'Start round 2'}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={completeRound}
-                                        disabled={!isRunning}
-                                        className="px-3.5 py-2 rounded-lg bg-white border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        Complete task
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={cancelRound}
-                                        disabled={!isRunning}
-                                        className="px-3.5 py-2 rounded-lg bg-white border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        Cancel
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={startOver}
-                                        className="ml-auto px-3.5 py-2 rounded-lg bg-white border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                                    >
-                                        Reset
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Middle: task + answer */}
-                        <div className="flex flex-col">
-                            <div className="bg-white border border-gray-200 rounded-lg p-5 h-full flex flex-col">
-                                {!hasStartedExperiment ? (
-                                    <div className="border border-dashed border-gray-300 rounded-lg p-4 bg-white">
-                                        <div className="text-sm font-semibold text-gray-900 mb-1">
-                                            Task will appear after you start
-                                        </div>
-                                        <div className="text-sm text-gray-600">
-                                            Click
-                                            {' '}
-                                            <span className="font-medium">Start round 1</span>
-                                            {' '}
-                                            to reveal the task and begin the timer.
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <>
-                                        <div className="text-sm font-semibold text-gray-900 mb-2">Task</div>
-                                        <ol className="list-decimal pl-5 text-sm text-gray-700 space-y-1">
-                                            {selectedTask?.instructions.map((line) => (
-                                                <li key={line}>{line}</li>
-                                            ))}
-                                        </ol>
-
-                                        <div className="mt-4 border border-gray-200 rounded-lg p-4 bg-gray-50">
-                                            <div className="text-sm font-semibold text-gray-900 mb-2">
-                                                Enter your result
-                                            </div>
-                                            <div className="text-sm text-gray-600 mb-3">
-                                                Type the
-                                                {' '}
-                                                <span className="font-medium">Mfr Part #</span>
-                                                {' '}
-                                                you found in the table.
-                                            </div>
-
-                                            <div className="flex items-center gap-3 flex-wrap">
-                                                <label htmlFor="task-result" className="flex items-center gap-3 flex-wrap">
-                                                    <span className="text-sm text-gray-700">Mfr Part #</span>
-                                                    <input
-                                                        id="task-result"
-                                                        type="text"
-                                                        value={answerText}
-                                                        onChange={(e) => {
-                                                            setAnswerText(e.target.value);
-                                                            setAnswerTouched(true);
-                                                        }}
-                                                        onBlur={() => setAnswerTouched(true)}
-                                                        disabled={!isRunning}
-                                                        placeholder="e.g. ML414H IV01E"
-                                                        className="w-72 max-w-full px-4 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500 disabled:bg-gray-50 disabled:cursor-not-allowed"
-                                                    />
-                                                </label>
-
-                                                <div className="text-sm">
-                                                    {answerTouched && answerText.trim() && (
-                                                        isAnswerValid ? (
-                                                            <span className="text-green-700 font-medium">
-                                                                Match found
-                                                            </span>
-                                                        ) : (
-                                                            <span className="text-red-700 font-medium">
-                                                                No match found
-                                                            </span>
-                                                        )
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                            {answerTouched && !isAnswerValid && (
-                                                <div className="mt-2 text-xs text-gray-500">
-                                                    Tip: enter the exact Mfr Part # shown
-                                                    {' '}
-                                                    in the table
-                                                    {' '}
-                                                    (suffix like
-                                                    {' '}
-                                                    <span className="font-medium">-0001</span>
-                                                    {' '}
-                                                    is okay).
-                                                </div>
-                                            )}
-                                        </div>
-                                    </>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Right: results */}
-                        <div className="flex flex-col">
-                            <div className="bg-gray-50 border border-gray-200 rounded-lg p-5 h-full flex flex-col">
-                                <div className="text-sm font-semibold text-gray-900 mb-3">Results</div>
-
-                                <div className="space-y-3 text-sm">
-                                    <div className="flex justify-between">
-                                        <span className="text-gray-600">UI mode</span>
-                                        <span className="font-medium text-gray-900">
-                                            {isSimplifiedMode ? 'Simplified' : 'Normal'}
+                                    <div className="text-sm text-gray-700 mt-1">
+                                        Time elapsed:
+                                        {' '}
+                                        <span className="font-semibold">
+                                            {timeLeftSeconds}
+                                            s
                                         </span>
                                     </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-gray-600">Threshold</span>
-                                        <span className="font-medium text-gray-900">70%</span>
-                                    </div>
                                 </div>
+                                {isRunning && !isSimplifiedMode && (
+                                    <button
+                                        type="button"
+                                        onClick={switchToSimplifiedUI}
+                                        className="px-4 py-2 rounded-lg bg-orange-500 text-white text-sm font-medium hover:bg-orange-600 transition-colors"
+                                    >
+                                        Switch to Simplified UI
+                                    </button>
+                                )}
+                            </div>
 
-                                {(round1 || round2) && (
-                                    <div className="mt-4 space-y-4">
-                                        {round1 && (
-                                            <div className="border-t border-gray-200 pt-4">
-                                                <div className="text-xs font-semibold text-gray-700 mb-2">Round 1</div>
-                                                <div className="text-xs text-gray-600 space-y-1">
-                                                    <div>
-                                                        Ended:
-                                                        {' '}
-                                                        <span className="text-gray-900">{round1.endedReason}</span>
-                                                    </div>
-                                                    <div>
-                                                        Duration:
-                                                        {' '}
-                                                        <span className="text-gray-900">
-                                                            {round1.durationSeconds}
-                                                            s
-                                                        </span>
-                                                    </div>
-                                                    <div>
-                                                        Avg score:
-                                                        {' '}
-                                                        <span className="text-gray-900">
-                                                            {Math.round(round1.avgScore * 100)}
-                                                            %
-                                                        </span>
-                                                    </div>
-                                                    <div>
-                                                        Max score:
-                                                        {' '}
-                                                        <span className="text-gray-900">
-                                                            {Math.round(round1.maxScore * 100)}
-                                                            %
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )}
-                                        {round2 && (
-                                            <div className="border-t border-gray-200 pt-4">
-                                                <div className="text-xs font-semibold text-gray-700 mb-2">Round 2</div>
-                                                <div className="text-xs text-gray-600 space-y-1">
-                                                    <div>
-                                                        Ended:
-                                                        {' '}
-                                                        <span className="text-gray-900">{round2.endedReason}</span>
-                                                    </div>
-                                                    <div>
-                                                        Duration:
-                                                        {' '}
-                                                        <span className="text-gray-900">
-                                                            {round2.durationSeconds}
-                                                            s
-                                                        </span>
-                                                    </div>
-                                                    <div>
-                                                        Avg score:
-                                                        {' '}
-                                                        <span className="text-gray-900">
-                                                            {Math.round(round2.avgScore * 100)}
-                                                            %
-                                                        </span>
-                                                    </div>
-                                                    <div>
-                                                        Max score:
-                                                        {' '}
-                                                        <span className="text-gray-900">
-                                                            {Math.round(round2.maxScore * 100)}
-                                                            %
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )}
-                                        {comparison && (
-                                            <div className="border-t border-gray-200 pt-4">
-                                                <div className="text-xs font-semibold text-gray-700 mb-2">Comparison (Round 2 - Round 1)</div>
-                                                <div className="text-xs text-gray-600 space-y-1">
-                                                    <div>
-                                                        Avg score Δ:
-                                                        {' '}
-                                                        <span className="text-gray-900">
-                                                            {Math.round(comparison.avgScoreDelta * 100)}
-                                                            %
-                                                        </span>
-                                                    </div>
-                                                    <div>
-                                                        Max score Δ:
-                                                        {' '}
-                                                        <span className="text-gray-900">
-                                                            {Math.round(comparison.maxScoreDelta * 100)}
-                                                            %
-                                                        </span>
-                                                    </div>
-                                                    <div>
-                                                        Time Δ:
-                                                        {' '}
-                                                        <span className="text-gray-900">
-                                                            {comparison.timeDelta}
-                                                            s
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowTaskModal(true)}
+                                    className="px-3.5 py-2 rounded-lg bg-white border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                                >
+                                    {!hasStartedExperiment ? 'Select Task' : 'View Task'}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={completeRound}
+                                    disabled={!isRunning}
+                                    className="px-3.5 py-2 rounded-lg bg-white border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    Complete task
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={cancelRound}
+                                    disabled={!isRunning}
+                                    className="px-3.5 py-2 rounded-lg bg-white border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    Cancel
+                                </button>
+                                {roundResults.length > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowResultsModal(true)}
+                                        className="ml-auto px-3.5 py-2 rounded-lg bg-white border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                                    >
+                                        View Results
+                                    </button>
                                 )}
                             </div>
                         </div>
@@ -780,16 +608,14 @@ function TaskExperiment(props: Props) {
                 }}
                 onAcceptChange={() => {
                     setShowWarning(false);
-                    // If round is still running and task hasn't been continued yet
-                    if (isRunning && currentRound === 1 && !taskContinuedInSimplifiedModeRef.current) {
-                        // Continue the same task in simplified mode
-                        taskContinuedInSimplifiedModeRef.current = true;
+                    // Switch to simplified mode if round is still running
+                    if (isRunning && currentRound === 1) {
+                        // Track when simplified mode is activated
+                        simplifiedModeActivatedAtMsRef.current = Date.now();
+                        // Initialize phase 2 (in simplified UI)
+                        phase2StartedAtMsRef.current = Date.now();
                         setIsSimplifiedMode(true);
-                        // Don't finalize, just switch UI and continue
-                    } else if (!isRunning && currentRound === 1) {
-                        // Task was already finalized (time limit), start Round 2
-                        setIsSimplifiedMode(true);
-                        setCurrentRound(2);
+                        // Reset filter selections when transitioning to simplified view
                         onClearAllFilters();
                     }
                 }}
@@ -800,6 +626,29 @@ function TaskExperiment(props: Props) {
                 acceptLabel="Switch to simplified UI"
                 showCountdown={false}
                 autoAccept={false}
+            />
+
+            <ResultsModal
+                isVisible={showResultsModal}
+                onClose={() => setShowResultsModal(false)}
+                isSimplifiedMode={isSimplifiedMode}
+                round1={round1}
+                round2={round2}
+                comparison={comparison}
+                onResetResults={resetResults}
+            />
+
+            <TaskModal
+                isVisible={showTaskModal}
+                onClose={() => setShowTaskModal(false)}
+                selectedTaskId={selectedTaskId}
+                onTaskChange={setSelectedTaskId}
+                tasks={DEFAULT_TASKS}
+                hasStartedExperiment={hasStartedExperiment}
+                isRunning={isRunning}
+                onStartRound={startRound}
+                canStart={canStart}
+                currentRound={currentRound}
             />
         </div>
     );

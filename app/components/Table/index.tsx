@@ -85,6 +85,7 @@ interface Props {
     selectedFilters: Set<string>;
     isSimplifiedMode?: boolean;
     globalSearch?: string;
+    currentTaskId?: string;
 }
 
 const optionTextBySectionKey: Record<string, Record<string, string>> = batteryData.reduce(
@@ -99,7 +100,7 @@ const optionTextBySectionKey: Record<string, Record<string, string>> = batteryDa
 );
 
 function Table(props: Props) {
-    const { selectedFilters, isSimplifiedMode = false, globalSearch = '' } = props;
+    const { selectedFilters, isSimplifiedMode = false, globalSearch = '', currentTaskId = '' } = props;
 
     const [sortBy, setSortBy] = useState('-100');
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
@@ -407,7 +408,11 @@ function Table(props: Props) {
                         <select
                             value={sortBy}
                             onChange={(e) => setSortBy(e.target.value)}
-                            className="text-sm border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-1 focus:ring-orange-500 bg-white"
+                            className={`text-sm border rounded-lg px-4 py-2 focus:outline-none focus:ring-1 focus:ring-orange-500 bg-white ${
+                                isSimplifiedMode && currentTaskId === 'battery-task-5'
+                                    ? 'border-orange-500 border-2 shadow-lg shadow-orange-200 bg-orange-50'
+                                    : 'border-gray-300'
+                            }`}
                         >
                             <option value="-100">Featured</option>
                             <option value="-102">Quantity Available</option>
