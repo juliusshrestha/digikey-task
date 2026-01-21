@@ -131,6 +131,24 @@ function ResultsModal(props: Props) {
                                                 {Math.round(round1.maxScore * 100)}%
                                             </span>
                                         </div>
+                                        <div className="flex justify-between">
+                                            <span>Avg eye gaze:</span>
+                                            <span className="text-gray-900 font-medium">
+                                                {Math.round(round1.avgGaze * 100)}%
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span>Avg emotion:</span>
+                                            <span className="text-gray-900 font-medium">
+                                                {Math.round(round1.avgEmotion * 100)}%
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span>Avg mouse:</span>
+                                            <span className="text-gray-900 font-medium">
+                                                {Math.round(round1.avgMouse * 100)}%
+                                            </span>
+                                        </div>
                                     </div>
 
                                     {/* Phase 1: Before Simplified UI */}
@@ -166,6 +184,24 @@ function ResultsModal(props: Props) {
                                                     <span>High score count:</span>
                                                     <span className="text-gray-900 font-medium">
                                                         {round1.phase1.highScoreCount}
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                    <span>Avg eye gaze:</span>
+                                                    <span className="text-gray-900 font-medium">
+                                                        {Math.round(round1.phase1.avgGaze * 100)}%
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                    <span>Avg emotion:</span>
+                                                    <span className="text-gray-900 font-medium">
+                                                        {Math.round(round1.phase1.avgEmotion * 100)}%
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                    <span>Avg mouse:</span>
+                                                    <span className="text-gray-900 font-medium">
+                                                        {Math.round(round1.phase1.avgMouse * 100)}%
                                                     </span>
                                                 </div>
                                             </div>
@@ -207,6 +243,24 @@ function ResultsModal(props: Props) {
                                                         {round1.phase2.highScoreCount}
                                                     </span>
                                                 </div>
+                                                <div className="flex justify-between">
+                                                    <span>Avg eye gaze:</span>
+                                                    <span className="text-gray-900 font-medium">
+                                                        {Math.round(round1.phase2.avgGaze * 100)}%
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                    <span>Avg emotion:</span>
+                                                    <span className="text-gray-900 font-medium">
+                                                        {Math.round(round1.phase2.avgEmotion * 100)}%
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                    <span>Avg mouse:</span>
+                                                    <span className="text-gray-900 font-medium">
+                                                        {Math.round(round1.phase2.avgMouse * 100)}%
+                                                    </span>
+                                                </div>
                                             </div>
                                         </div>
                                     )}
@@ -236,6 +290,24 @@ function ResultsModal(props: Props) {
                                             <span>Max score:</span>
                                             <span className="text-gray-900 font-medium">
                                                 {Math.round(round2.maxScore * 100)}%
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span>Avg eye gaze:</span>
+                                            <span className="text-gray-900 font-medium">
+                                                {Math.round(round2.avgGaze * 100)}%
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span>Avg emotion:</span>
+                                            <span className="text-gray-900 font-medium">
+                                                {Math.round(round2.avgEmotion * 100)}%
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span>Avg mouse:</span>
+                                            <span className="text-gray-900 font-medium">
+                                                {Math.round(round2.avgMouse * 100)}%
                                             </span>
                                         </div>
                                     </div>
@@ -275,6 +347,24 @@ function ResultsModal(props: Props) {
                                                         {round2.phase1.highScoreCount}
                                                     </span>
                                                 </div>
+                                                <div className="flex justify-between">
+                                                    <span>Avg eye gaze:</span>
+                                                    <span className="text-gray-900 font-medium">
+                                                        {Math.round(round2.phase1.avgGaze * 100)}%
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                    <span>Avg emotion:</span>
+                                                    <span className="text-gray-900 font-medium">
+                                                        {Math.round(round2.phase1.avgEmotion * 100)}%
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                    <span>Avg mouse:</span>
+                                                    <span className="text-gray-900 font-medium">
+                                                        {Math.round(round2.phase1.avgMouse * 100)}%
+                                                    </span>
+                                                </div>
                                             </div>
                                         </div>
                                     )}
@@ -312,6 +402,24 @@ function ResultsModal(props: Props) {
                                                     <span>High score count:</span>
                                                     <span className="text-gray-900 font-medium">
                                                         {round2.phase2.highScoreCount}
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                    <span>Avg eye gaze:</span>
+                                                    <span className="text-gray-900 font-medium">
+                                                        {Math.round(round2.phase2.avgGaze * 100)}%
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                    <span>Avg emotion:</span>
+                                                    <span className="text-gray-900 font-medium">
+                                                        {Math.round(round2.phase2.avgEmotion * 100)}%
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                    <span>Avg mouse:</span>
+                                                    <span className="text-gray-900 font-medium">
+                                                        {Math.round(round2.phase2.avgMouse * 100)}%
                                                     </span>
                                                 </div>
                                             </div>
